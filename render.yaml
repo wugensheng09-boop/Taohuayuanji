@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: textbook-world-upstream
+    runtime: node
+    rootDir: upstream-server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: PORT
+        value: 8787
+      - key: HOST
+        value: 0.0.0.0
+      - key: REQUEST_TIMEOUT_MS
+        value: 20000
+      - key: REQUEST_BODY_LIMIT_BYTES
+        value: 262144
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 60
+      - key: CHAT_PROVIDER
+        value: bailian
+      - key: CHAT_MODEL
+        value: qwen-plus
+      - key: CHAT_BASE_URL
+        value: https://dashscope.aliyuncs.com/compatible-mode/v1
+      - key: TTS_PROVIDER
+        value: bailian
+      - key: TTS_MODEL
+        value: qwen3-tts-instruct-flash
+      - key: TTS_ENDPOINT
+        value: https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+      - key: BAILIAN_TTS_FALLBACK_VOICE
+        value: Ethan
+      - key: UPSTREAM_API_TOKEN
+        sync: false
+      - key: CHAT_API_KEY
+        sync: false
+      - key: TTS_API_KEY
+        sync: false

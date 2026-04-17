@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 760" role="img" aria-label="同业渔人立绘">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#bfd3df"/>
+      <stop offset="1" stop-color="#7b99ab"/>
+    </linearGradient>
+    <linearGradient id="robe" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#2f5b76"/>
+      <stop offset="1" stop-color="#24485f"/>
+    </linearGradient>
+  </defs>
+  <rect width="520" height="760" fill="url(#bg)"/>
+  <ellipse cx="260" cy="694" rx="170" ry="30" fill="#335468" opacity=".35"/>
+  <path d="M132 692h256l-40-274H172z" fill="url(#robe)"/>
+  <path d="M182 420c24-51 49-71 79-71 33 0 67 23 82 71v140H182z" fill="#2a5269"/>
+  <circle cx="260" cy="276" r="82" fill="#efd2b1"/>
+  <path d="M174 276c7-59 43-96 86-96 47 0 79 34 84 92-20-15-47-24-84-24-32 0-58 9-86 28z" fill="#2d3137"/>
+  <ellipse cx="229" cy="280" rx="8" ry="7" fill="#2a2017"/>
+  <ellipse cx="293" cy="280" rx="8" ry="7" fill="#2a2017"/>
+  <path d="M227 324c12 10 50 10 62 0" stroke="#8a4f36" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M112 484c20-38 49-62 87-71" stroke="#c49a61" stroke-width="16" stroke-linecap="round"/>
+  <path d="M201 406l188 146" stroke="#936a3f" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="404" cy="562" r="30" fill="#a97d4a"/>
+  <circle cx="404" cy="562" r="19" fill="#7a5834"/>
+</svg>

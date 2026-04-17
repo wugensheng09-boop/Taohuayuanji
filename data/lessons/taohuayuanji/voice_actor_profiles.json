@@ -1,0 +1,44 @@
+﻿{
+    "narrator":  {
+                     "role":  "旁白",
+                     "tone":  "中性温润",
+                     "emotion":  "平静、轻柔、带画面感",
+                     "pace":  "中慢",
+                     "keywords":  "陪伴、展开、留白"
+                 },
+    "protagonist_inner":  {
+                              "role":  "主角心声",
+                              "tone":  "年轻、清透、贴近耳边",
+                              "emotion":  "好奇、惊异、犹疑、惆怅",
+                              "pace":  "中速偏慢",
+                              "keywords":  "近、轻、真"
+                          },
+    "protagonist_dialogue":  {
+                                 "role":  "主角对白",
+                                 "tone":  "与心声同源，但更实",
+                                 "emotion":  "谨慎、礼貌、真诚",
+                                 "pace":  "中速",
+                                 "keywords":  "开口、回应、克制"
+                             },
+    "aqiao":  {
+                  "role":  "阿樵",
+                  "tone":  "朴实男声",
+                  "emotion":  "惊讶、警觉、善意",
+                  "pace":  "中速偏快",
+                  "keywords":  "山野气、戒备"
+              },
+    "chief":  {
+                  "role":  "族长",
+                  "tone":  "中老年温厚男声",
+                  "emotion":  "沉静、感慨、平和",
+                  "pace":  "慢",
+                  "keywords":  "厚度、安定、隔世感"
+              },
+    "peer_fisher":  {
+                        "role":  "同业渔人",
+                        "tone":  "中年、烟火气、外放",
+                        "emotion":  "热情、追问、兴奋、半信半疑",
+                        "pace":  "中快",
+                        "keywords":  "街巷感、追问、起伏"
+                    }
+}

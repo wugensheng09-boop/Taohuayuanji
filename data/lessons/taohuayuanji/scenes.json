@@ -1,0 +1,503 @@
+[
+  {
+    "sceneId": "river",
+    "title": "溪流行舟",
+    "backgroundImage": "/assets/taohuayuanji/s01_river_boat.jpg",
+    "videoMode": "loop",
+    "ambientLayers": {
+      "primary": "/audio/taohuayuanji/ambience/河流.MP3",
+      "secondary": "/audio/taohuayuanji/ambience/鸟鸣.mp3"
+    },
+    "cameraPreset": "none",
+    "transitionActionLabel": "循溪前行",
+    "description": "晋太元中，武陵人捕鱼为业。缘溪行，忘路之远近。",
+    "npcs": [
+      "narrator",
+      "fisherman"
+    ],
+    "hotspots": [],
+    "learningGoals": [
+      "理解故事开端",
+      "把握“误入”叙事线索"
+    ],
+    "tasks": [
+      {
+        "id": "task_river_01",
+        "type": "observation",
+        "content": "找出体现渔人“偶然误入”状态的两个词。",
+        "hints": [
+          "可关注“缘”“忘”等动词。"
+        ]
+      }
+    ],
+    "lineBackgroundOverrides": {
+      "river_l1": "/assets/taohuayuanji/s01_fishing_start.jpg",
+      "river_i1": "/assets/taohuayuanji/s01_river_boat.jpg",
+      "river_i2": "/assets/taohuayuanji/s01_river_boat.jpg",
+      "river_l4": "/assets/taohuayuanji/s01_river_boat.jpg"
+    },
+    "timeline": [
+      {
+        "id": "river_l1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "晋太元中，武陵人捕鱼为业。",
+        "autoNextMs": 3000,
+        "voiceTrack": "scene"
+      },
+      {
+        "id": "river_i1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "我本在溪上讨生，顺流而下，越走越深。",
+        "autoNextMs": 2600,
+        "voiceTrack": "inner"
+      },
+      {
+        "id": "river_i2",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "缘溪行，忘路之远近。",
+        "autoNextMs": 1800,
+        "voiceTrack": "quote"
+      },
+      {
+        "id": "river_l4",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "等我回过神，四野陌生，只剩水声带路。",
+        "autoNextMs": 2600,
+        "voiceTrack": "inner"
+      }
+    ],
+    "nextSceneId": "peach_forest",
+    "bgm": {
+      "src": "/audio/taohuayuanji/ambience/guqin.MP3",
+      "volume": 0.15
+    },
+    "transitionChoices": [
+      "向前划动",
+      "顺流疾行"
+    ],
+    "lineVoiceOverrides": {
+      "river_l1": "river_l1",
+      "river_i1": "river_i1",
+      "river_i2": "river_i2",
+      "river_l4": "river_l4"
+    }
+  },
+  {
+    "sceneId": "peach_forest",
+    "title": "忽逢桃花林",
+    "backgroundImage": "/assets/taohuayuanji/s02_peach_forest.jpg",
+    "backgroundVideo": "/videos/taohuayuanji/s02_peach_forest_intro_v2.mp4",
+    "videoMode": "loop",
+    "videoFallbackImage": "/assets/taohuayuanji/s02_peach_forest.jpg",
+    "ambientLayers": {
+      "primary": "/audio/taohuayuanji/ambience/鸟鸣.mp3",
+      "secondary": "/audio/taohuayuanji/ambience/风声.MP3"
+    },
+    "cameraPreset": "push_in",
+    "transitionActionLabel": "踏花深入",
+    "description": "忽逢桃花林，夹岸数百步，中无杂树，芳草鲜美，落英缤纷。",
+    "npcs": [
+      "narrator",
+      "fisherman"
+    ],
+    "hotspots": [],
+    "learningGoals": [
+      "理解景物描写",
+      "体会氛围营造"
+    ],
+    "tasks": [
+      {
+        "id": "task_forest_01",
+        "type": "analysis",
+        "content": "找出最能体现环境纯净的词语，并说明作用。",
+        "hints": [
+          "可从“中无杂树”切入。"
+        ]
+      }
+    ],
+    "timeline": [
+      {
+        "id": "forest_l1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "前方忽然出现一片桃花林，夹岸而开。",
+        "autoNextMs": 1500,
+        "voiceTrack": "scene"
+      },
+      {
+        "id": "forest_i1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "花色映满水面，我一时看得出了神。",
+        "autoNextMs": 2600,
+        "voiceTrack": "inner"
+      },
+      {
+        "id": "forest_i2",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "中无杂树，芳草鲜美，落英缤纷。",
+        "autoNextMs": 1800,
+        "voiceTrack": "quote"
+      },
+      {
+        "id": "forest_l4",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "花瓣落在船头，我只想看看桃林尽头藏着什么。",
+        "autoNextMs": 1600,
+        "voiceTrack": "inner"
+      }
+    ],
+    "nextSceneId": "cave_entry",
+    "bgm": {
+      "src": "/audio/taohuayuanji/ambience/古琴.MP3",
+      "volume": 0.22
+    },
+    "transitionChoices": [
+      "踏花深入",
+      "顺溪前行"
+    ],
+    "lineVoiceOverrides": {
+      "forest_l1": "forest_l1",
+      "forest_i1": "forest_i1",
+      "forest_i2": "forest_i2",
+      "forest_l4": "forest_l4"
+    }
+  },
+  {
+    "sceneId": "cave_entry",
+    "title": "山洞入口",
+    "backgroundImage": "/assets/taohuayuanji/s03_cave_entrance.png",
+    "backgroundVideo": "/videos/taohuayuanji/s03_enter_cave_v3.mp4",
+    "videoStartLineId": "cave_l4",
+    "videoMode": "play_once_then_image",
+    "videoFallbackImage": "/assets/taohuayuanji/s03_cave_inside_fallback.png",
+    "ambientLayers": {
+      "primary": "/audio/taohuayuanji/ambience/风声.MP3",
+      "secondary": "/audio/taohuayuanji/ambience/河流.MP3"
+    },
+    "cameraPreset": "focus",
+    "transitionActionLabel": "入洞而进",
+    "description": "林尽水源，便得一山，山有小口，仿佛若有光。",
+    "npcs": [
+      "narrator",
+      "fisherman"
+    ],
+    "hotspots": [],
+    "learningGoals": [
+      "理解过渡空间",
+      "感受叙事张力"
+    ],
+    "tasks": [
+      {
+        "id": "task_cave_01",
+        "type": "qa",
+        "content": "“仿佛若有光”为什么能激发读者的探索欲？"
+      }
+    ],
+    "timeline": [
+      {
+        "id": "cave_l1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "桃林到了尽头，前方忽然现出一座山。",
+        "autoNextMs": 1500,
+        "voiceTrack": "scene"
+      },
+      {
+        "id": "cave_i1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "山间像有一道小口，我把船慢慢靠过去。",
+        "autoNextMs": 2600,
+        "voiceTrack": "inner"
+      },
+      {
+        "id": "cave_i2",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "山有小口，仿佛若有光。",
+        "autoNextMs": 1800,
+        "voiceTrack": "quote"
+      },
+      {
+        "id": "cave_l4",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "初极狭，才通人。复行数十步，豁然开朗。",
+        "autoNextMs": 2400,
+        "voiceTrack": "quote"
+      }
+    ],
+    "nextSceneId": "first_view",
+    "bgm": {
+      "src": "/audio/taohuayuanji/ambience/风声.MP3",
+      "volume": 0.09
+    },
+    "transitionChoices": [
+      "弃舟登岸",
+      "入洞探路"
+    ],
+    "lineVoiceOverrides": {
+      "cave_l1": "cave_l1",
+      "cave_i1": "cave_i1",
+      "cave_i2": "cave_i2",
+      "cave_l4": "cave_l4"
+    }
+  },
+  {
+    "sceneId": "first_view",
+    "title": "初入桃源",
+    "backgroundImage": "/assets/taohuayuanji/s05_village_talk.png",
+    "backgroundVideo": "/videos/taohuayuanji/s04_after_cave.mp4",
+    "videoMode": "play_once_then_image",
+    "videoFallbackImage": "/assets/taohuayuanji/s05_village_talk.png",
+    "ambientLayers": {
+      "primary": "/audio/taohuayuanji/ambience/古琴.MP3",
+      "secondary": "/audio/taohuayuanji/ambience/鸟鸣.mp3"
+    },
+    "cameraPreset": "brighten",
+    "transitionActionLabel": "入境观村",
+    "description": "土地平旷，屋舍俨然，有良田、美池、桑竹之属。",
+    "npcs": [
+      "narrator",
+      "fisherman",
+      "villager"
+    ],
+    "hotspots": [],
+    "learningGoals": [
+      "理解桃源社会外在图景",
+      "提取环境描写证据"
+    ],
+    "tasks": [
+      {
+        "id": "task_view_01",
+        "type": "observation",
+        "content": "找出三处描写，证明桃源生活安定有序。"
+      }
+    ],
+    "timeline": [
+      {
+        "id": "view_l1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "入内之后，眼前土地平旷，屋舍井然。",
+        "autoNextMs": 1600,
+        "voiceTrack": "scene"
+      },
+      {
+        "id": "view_i1",
+        "speakerMode": "npc",
+        "npcId": "villager",
+        "lineType": "auto",
+        "text": "村口先有人看见我，神色骤然一紧。",
+        "autoNextMs": 2600,
+        "interactionMode": "npc2",
+        "interactionKey": "aqiao_gate",
+        "voiceTrack": "inner"
+      },
+      {
+        "id": "view_i2",
+        "speakerMode": "npc",
+        "npcId": "fisherman",
+        "lineType": "auto",
+        "text": "阡陌交通，鸡犬相闻。",
+        "autoNextMs": 1800,
+        "voiceTrack": "quote"
+      },
+      {
+        "id": "view_l4",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "这一处静得出奇，我一时竟不敢高声。",
+        "autoNextMs": 1600,
+        "voiceTrack": "inner"
+      }
+    ],
+    "nextSceneId": "village_talk",
+    "bgm": {
+      "src": "/audio/taohuayuanji/ambience/古琴.MP3",
+      "volume": 0.2
+    },
+    "transitionChoices": [
+      "向前划动",
+      "深入村落"
+    ],
+    "lineVoiceOverrides": {
+      "view_l1": "view_l1",
+      "view_i1": "view_i1",
+      "view_i2": "view_i2",
+      "view_l4": "view_l4"
+    }
+  },
+  {
+    "sceneId": "village_talk",
+    "title": "村中见闻",
+    "backgroundImage": "/assets/taohuayuanji/Gemini_Generated_Image_cjm6gicjm6gicjm6.png",
+    "videoMode": "loop",
+    "ambientLayers": {
+      "primary": "/audio/taohuayuanji/ambience/村中生活声.MP3",
+      "secondary": "/audio/taohuayuanji/ambience/古琴.MP3"
+    },
+    "cameraPreset": "none",
+    "transitionActionLabel": "辞别村落",
+    "description": "黄发垂髫，并怡然自乐。村人闻有此人，咸来问讯。",
+    "npcs": [
+      "narrator",
+      "fisherman",
+      "villager"
+    ],
+    "hotspots": [],
+    "learningGoals": [
+      "理解桃源生活状态",
+      "思考理想社会主题"
+    ],
+    "tasks": [
+      {
+        "id": "task_village_01",
+        "type": "dialogue",
+        "content": "归纳桃源社会的两项核心特征。"
+      }
+    ],
+    "timeline": [
+      {
+        "id": "village_l1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "老人孩子安然自得，村人闻讯皆来。",
+        "autoNextMs": 1600,
+        "voiceTrack": "scene"
+      },
+      {
+        "id": "village_i1",
+        "speakerMode": "npc",
+        "npcId": "villager",
+        "lineType": "auto",
+        "text": "席间，族长放下酒盏，凝神问我今是何世。",
+        "autoNextMs": 2600,
+        "interactionMode": "npc2",
+        "interactionKey": "chief_dialogue",
+        "voiceTrack": "inner"
+      },
+      {
+        "id": "village_i2",
+        "speakerMode": "npc",
+        "npcId": "fisherman",
+        "lineType": "auto",
+        "text": "乃不知有汉，无论魏晋。",
+        "autoNextMs": 1800,
+        "voiceTrack": "quote"
+      },
+      {
+        "id": "village_l4",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "听完他们的话，我才知此地与外世隔绝已久。",
+        "autoNextMs": 1600,
+        "voiceTrack": "inner"
+      }
+    ],
+    "nextSceneId": "lost_path",
+    "bgm": {
+      "src": "/audio/taohuayuanji/ambience/古琴.MP3",
+      "volume": 0.18
+    },
+    "transitionChoices": [
+      "向前划动",
+      "辞别村落"
+    ],
+    "lineVoiceOverrides": {
+      "village_l1": "village_l1",
+      "village_i1": "village_i1",
+      "village_i2": "village_i2",
+      "village_l4": "village_l4"
+    }
+  },
+  {
+    "sceneId": "lost_path",
+    "title": "离开后再寻不得",
+    "backgroundImage": "/assets/taohuayuanji/s06_lost_path.png",
+    "videoMode": "loop",
+    "ambientLayers": {
+      "primary": "/audio/taohuayuanji/ambience/风声.MP3",
+      "secondary": "/audio/taohuayuanji/ambience/河流.MP3"
+    },
+    "cameraPreset": "pull_back",
+    "transitionActionLabel": "再寻旧路",
+    "description": "既出，得其船，便扶向路，处处志之。寻向所志，遂迷，不复得路。",
+    "npcs": [
+      "narrator",
+      "fisherman"
+    ],
+    "hotspots": [],
+    "learningGoals": [
+      "理解结尾作用",
+      "思考理想与现实关系"
+    ],
+    "tasks": [
+      {
+        "id": "task_ending_01",
+        "type": "analysis",
+        "content": "解释“再寻不得”在主题表达上的作用。"
+      }
+    ],
+    "timeline": [
+      {
+        "id": "ending_l1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "离开桃源后，我沿路做下记号。",
+        "autoNextMs": 3400,
+        "voiceTrack": "scene"
+      },
+      {
+        "id": "ending_i1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "回到武陵，同业渔人立刻围上来追问。",
+        "autoNextMs": 2600,
+        "interactionMode": "npc2",
+        "interactionKey": "peer_fisher_chain",
+        "voiceTrack": "scene"
+      },
+      {
+        "id": "ending_i2",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "寻向所志，遂迷，不复得路。",
+        "autoNextMs": 1800,
+        "voiceTrack": "quote"
+      },
+      {
+        "id": "ending_l4",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "我这才懂得，有些地方能遇见，却未必能再抵达。",
+        "autoNextMs": 2200,
+        "voiceTrack": "inner"
+      }
+    ],
+    "nextSceneId": null,
+    "bgm": {
+      "src": "/audio/taohuayuanji/ambience/guqin.MP3",
+      "volume": 0.12
+    },
+    "lineBackgroundOverrides": {
+      "ending_l1": "/assets/taohuayuanji/s055_return_mark.png",
+      "ending_i1": "/assets/taohuayuanji/同业渔民询问.png",
+      "ending_i2": "/assets/taohuayuanji/s06_lost_path.png",
+      "ending_l4": "/assets/taohuayuanji/s06_lost_path.png"
+    },
+    "lineVoiceOverrides": {
+      "ending_l1": "ending_l1",
+      "ending_i1": "ending_i1",
+      "ending_i2": "ending_i2",
+      "ending_l4": "ending_l4"
+    }
+  }
+]

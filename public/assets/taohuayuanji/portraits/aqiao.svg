@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 760" role="img" aria-label="阿樵立绘">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#c8d8ca"/>
+      <stop offset="1" stop-color="#8aa18d"/>
+    </linearGradient>
+    <linearGradient id="robe" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#637b63"/>
+      <stop offset="1" stop-color="#4f6350"/>
+    </linearGradient>
+  </defs>
+  <rect width="520" height="760" fill="url(#bg)"/>
+  <ellipse cx="260" cy="690" rx="165" ry="28" fill="#506154" opacity=".35"/>
+  <path d="M144 690h232l-38-250H182z" fill="url(#robe)"/>
+  <path d="M176 434c21-43 55-68 84-68 35 0 68 27 85 68v126H176z" fill="#5a6e5a"/>
+  <circle cx="260" cy="288" r="78" fill="#efd2b0"/>
+  <path d="M186 290c8-58 34-96 74-96 48 0 83 41 83 99-15-22-38-37-67-37-31 0-61 15-90 34z" fill="#2d3330"/>
+  <ellipse cx="230" cy="292" rx="8" ry="7" fill="#2c2117"/>
+  <ellipse cx="292" cy="292" rx="8" ry="7" fill="#2c2117"/>
+  <path d="M230 334c12 11 47 11 59 0" stroke="#8a4f37" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M177 435c-35 18-60 50-72 101" stroke="#8a5d32" stroke-width="18" stroke-linecap="round"/>
+  <path d="M342 434c35 18 60 50 72 101" stroke="#8a5d32" stroke-width="18" stroke-linecap="round"/>
+  <path d="M192 460h136l-11 40H203z" fill="#d7be90" opacity=".78"/>
+</svg>

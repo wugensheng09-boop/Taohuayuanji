@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 760" role="img" aria-label="桃源族长立绘">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#e2d4bc"/>
+      <stop offset="1" stop-color="#b79f7e"/>
+    </linearGradient>
+    <linearGradient id="robe" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#6a5238"/>
+      <stop offset="1" stop-color="#4f3d2b"/>
+    </linearGradient>
+  </defs>
+  <rect width="520" height="760" fill="url(#bg)"/>
+  <ellipse cx="260" cy="692" rx="170" ry="30" fill="#5f4a32" opacity=".35"/>
+  <path d="M130 690h260l-42-290H172z" fill="url(#robe)"/>
+  <path d="M182 405c22-52 49-72 78-72 34 0 67 23 82 72v150H182z" fill="#5a4532"/>
+  <circle cx="260" cy="268" r="84" fill="#efd5b6"/>
+  <path d="M176 266c0-62 37-108 86-108 46 0 82 38 83 99-18-15-45-27-82-27-34 0-62 13-87 36z" fill="#f1f1f1"/>
+  <path d="M188 276c10-32 41-54 72-54 36 0 65 20 78 52-18-11-46-17-78-17-30 0-55 7-72 19z" fill="#44403a"/>
+  <ellipse cx="228" cy="272" rx="7" ry="6" fill="#2e2218"/>
+  <ellipse cx="294" cy="272" rx="7" ry="6" fill="#2e2218"/>
+  <path d="M232 308c9 7 45 7 55 0" stroke="#8b5238" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M229 335h62l-7 34h-48z" fill="#f4f4f4"/>
+  <path d="M152 468h216v22H152z" fill="#d1bf98" opacity=".65"/>
+  <path d="M160 516h200v18H160z" fill="#d1bf98" opacity=".52"/>
+</svg>

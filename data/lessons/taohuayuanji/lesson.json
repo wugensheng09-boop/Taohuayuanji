@@ -1,0 +1,26 @@
+{
+  "lessonId": "taohuayuanji",
+  "title": "桃花源记",
+  "author": "陶渊明",
+  "era": "东晋",
+  "intro": "跟随渔人的足迹，穿越进入《桃花源记》的七段沉浸场景，在探索与对话中理解文言文意境、结构与主旨。",
+  "coverImage": "/assets/taohuayuanji/cover.png",
+  "entrySceneId": "river",
+  "sceneOrder": [
+    "river",
+    "peach_forest",
+    "cave_entry",
+    "first_view",
+    "village_talk",
+    "lost_path"
+  ],
+  "targetUsers": [
+    "初中生",
+    "文言文学习者"
+  ],
+  "suggestedQuestions": [
+    "桃源中人为何不知有汉？",
+    "“落英缤纷”在文中有什么作用？",
+    "结尾“再寻不得”表达了怎样的思想？"
+  ]
+}
