@@ -57,6 +57,19 @@ function extractChatContent(payload) {
   return "";
 }
 
+function ensureJsonInstruction(text) {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (!trimmed) {
+    return "Return valid JSON only.";
+  }
+
+  if (/json/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `${trimmed}\n\nReturn valid JSON only. The final answer must be a single JSON object.`;
+}
+
 async function postJson(url, headers, body, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -144,8 +157,8 @@ async function generateOpenAiCompatibleChat(config, payload) {
       max_tokens: 800,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: payload.systemPrompt },
-        { role: "user", content: payload.userPrompt },
+        { role: "system", content: ensureJsonInstruction(payload.systemPrompt) },
+        { role: "user", content: ensureJsonInstruction(payload.userPrompt) },
       ],
     },
     config.requestTimeoutMs,
@@ -173,8 +186,8 @@ async function generateBailianChat(config, payload) {
       max_tokens: 800,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: payload.systemPrompt },
-        { role: "user", content: payload.userPrompt },
+        { role: "system", content: ensureJsonInstruction(payload.systemPrompt) },
+        { role: "user", content: ensureJsonInstruction(payload.userPrompt) },
       ],
     },
     config.requestTimeoutMs,

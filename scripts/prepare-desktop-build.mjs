@@ -1,8 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+
+dotenv.config({ path: path.join(process.cwd(), ".env.local"), override: false });
+dotenv.config();
 
 const projectRoot = process.cwd();
 const standaloneDir = path.join(projectRoot, ".next", "standalone");
@@ -21,6 +24,7 @@ async function main() {
   await mkdir(runtimeDir, { recursive: true });
 
   await copyIfExists(standaloneDir, runtimeDir);
+  await rename(path.join(runtimeDir, "node_modules"), path.join(runtimeDir, "runtime-deps"));
   await copyIfExists(staticDir, path.join(runtimeDir, ".next", "static"));
   await copyIfExists(publicDir, path.join(runtimeDir, "public"));
   await copyIfExists(dataDir, path.join(runtimeDir, "data"));
@@ -30,6 +34,7 @@ async function main() {
     "electron",
     "scripts",
     "src",
+    "taohuayuan-mvp",
     "progress.md",
     "README.md",
     "eslint.config.mjs",
@@ -42,18 +47,24 @@ async function main() {
     "cloudflared-temp.out.log",
     "cloudflared.log",
     "out.log",
-    "release"
+    "release",
+    "desktop-release",
   ];
 
   await Promise.all(
     cleanupTargets.map((target) =>
-      rm(path.join(runtimeDir, target), { recursive: true, force: true })
-    )
+      rm(path.join(runtimeDir, target), { recursive: true, force: true }),
+    ),
   );
 
   const config = {
     upstreamApiBaseUrl: process.env.UPSTREAM_API_BASE_URL?.trim() || undefined,
-    upstreamApiToken: process.env.UPSTREAM_API_TOKEN?.trim() || undefined
+    upstreamApiToken: process.env.UPSTREAM_API_TOKEN?.trim() || undefined,
+    upstreamApiModel: process.env.UPSTREAM_API_MODEL?.trim() || undefined,
+    upstreamApiModelFreeAsk: process.env.UPSTREAM_API_MODEL_FREE_ASK?.trim() || undefined,
+    upstreamApiModelRoleplay: process.env.UPSTREAM_API_MODEL_ROLEPLAY?.trim() || undefined,
+    upstreamApiModelQuiz: process.env.UPSTREAM_API_MODEL_QUIZ?.trim() || undefined,
+    upstreamApiModelLeak: process.env.UPSTREAM_API_MODEL_LEAK?.trim() || undefined,
   };
 
   if (config.upstreamApiBaseUrl || config.upstreamApiToken) {

@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 import { generateNpcReply } from "@/lib/ai";
 import { loadLessonBundle } from "@/lib/lesson-loader";
-import { synthesizeNpcTts } from "@/lib/tts";
 import {
   addKnowledgeTags,
   recordChat,
   upsertSession,
 } from "@/lib/session-store";
+import { synthesizeNpcTts } from "@/lib/tts";
 import { parseChatPayload } from "@/lib/validators";
 import type { PostStoryNpcConfig } from "@/types/epilogue";
 import type { NpcConfig } from "@/types/npc";
@@ -24,7 +24,7 @@ function toRuntimeNpcConfig(epilogueNpc: PostStoryNpcConfig): NpcConfig {
       "围绕《桃花源记》剧情回应",
       "以沉浸叙事方式推进对话",
     ],
-    systemProfile: `${epilogueNpc.role}，请保持古风语境并确保回应安全、克制。`,
+    systemProfile: `${epilogueNpc.role}，请保持古风语境，并确保回应安全、克制、贴合课文。`,
   };
 }
 

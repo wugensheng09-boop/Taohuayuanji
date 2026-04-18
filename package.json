@@ -37,7 +37,7 @@
     "appId": "com.taohuayuan.desktop",
     "productName": "课本世界穿越器",
     "directories": {
-      "output": "release",
+      "output": "desktop-release",
       "buildResources": "src/app"
     },
     "files": [
@@ -55,7 +55,13 @@
         "from": "dist-desktop/app-runtime",
         "to": "app-runtime",
         "filter": [
-          "**/*"
+          "server.js",
+          "package.json",
+          "desktop-config.json",
+          ".next/**/*",
+          "data/**/*",
+          "public/**/*",
+          "runtime-deps/**/*"
         ]
       }
     ],

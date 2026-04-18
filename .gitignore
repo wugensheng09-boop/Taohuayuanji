@@ -21,6 +21,9 @@
 /build
 /dist-desktop
 /release
+/desktop-release
+/desktop-release*
+/taohuayuan-mvp
 
 # misc
 .DS_Store

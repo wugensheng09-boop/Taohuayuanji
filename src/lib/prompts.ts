@@ -1,8 +1,8 @@
+import type { ChatRequestPayload } from "@/lib/validators";
 import type { KnowledgeBase } from "@/types/lesson";
 import type { NpcConfig } from "@/types/npc";
 import type { SceneConfig } from "@/types/scene";
 import type { SessionState } from "@/types/session";
-import type { ChatRequestPayload } from "@/lib/validators";
 
 function compactKnowledge(knowledge: KnowledgeBase): string {
   const annotations = knowledge.annotations
@@ -14,9 +14,9 @@ function compactKnowledge(knowledge: KnowledgeBase): string {
 
   return [
     `原文片段：${knowledge.originalText.slice(0, 320)}...`,
-    `注释：${annotations}`,
-    `主题：${themes}`,
-    `考点：${examPoints}`,
+    `注释：${annotations || "无"}`,
+    `主题：${themes || "无"}`,
+    `考点：${examPoints || "无"}`,
   ].join("\n");
 }
 
@@ -32,6 +32,7 @@ function baseRolePrompt(params: {
 
   return `
 你正在扮演《桃花源记》中的“${npc.name}”。
+
 角色信息：
 - 角色定位：${npc.role}
 - 语言风格：${npc.style}
@@ -68,11 +69,13 @@ export function buildChatSystemPrompt(params: {
 ${basePrompt}
 
 任务模式：剧情角色对话
+
 规则：
-1) 保持古风语境，不说现代网络梗。
-2) 回答简洁，20字左右优先。
-3) 只回答，不反问（除非用户明确要求你追问）。
-4) 仅输出 JSON：
+1. 保持古风语境，不提现代科技、互联网或 AI。
+2. 回答简洁自然，优先控制在 20 到 60 字。
+3. 只顺着当前剧情与课文意境回应，不跳出角色。
+4. 不要反问，除非用户明显需要你追问。
+5. 只输出 JSON，不要输出解释、代码块或额外文字：
 {
   "reply": "角色回复",
   "suggestedActions": ["建议1", "建议2"],
@@ -86,18 +89,19 @@ ${basePrompt}
     return `
 ${basePrompt}
 
-任务模式：泄密风险评估 + 角色回复
+任务模式：泄密风险评估 + 角色回应
+
 判定依据：
 - 敏感词：${(payload.sensitiveKeywords ?? []).join("、") || "无"}
 - 路径线索词：${(payload.routeKeywords ?? []).join("、") || "无"}
 - 可复现线索词：${(payload.reproducibleClueKeywords ?? []).join("、") || "无"}
 
 规则：
-1) 先给角色回复，再给风险评估。
-2) leakRiskLevel 只能是 low/mid/high。
-3) leakRiskScore 范围 0~1。
-4) stageFeedback 语气要鼓励、克制。
-5) 仅输出 JSON：
+1. 先给一句角色回应，再给风险评估。
+2. leakRiskLevel 只能是 low、mid、high。
+3. leakRiskScore 范围必须在 0 到 1。
+4. stageFeedback 语气要克制、鼓励，不要训斥。
+5. 只输出 JSON：
 {
   "reply": "角色回复",
   "leakRiskLevel": "low|mid|high",
@@ -111,7 +115,8 @@ ${basePrompt}
   return `
 ${basePrompt}
 
-任务模式：课后测评（主观/选择）
+任务模式：课文测评
+
 题目：${payload.question ?? "未提供题目"}
 题型：${payload.questionType ?? "open"}
 参考要点：${(payload.referencePoints ?? []).join("、") || "无"}
@@ -119,9 +124,9 @@ ${basePrompt}
 选择题标准答案：${(payload.correctOptions ?? []).join("、") || "未提供"}
 
 规则：
-1) reply 先给一句角色口吻反馈（不超过120字）。
-2) rubric 四个分数都用 0~100 整数。
-3) 仅输出 JSON：
+1. reply 先给一句角色口吻反馈，控制在 20 字以内。
+2. 四个评分都使用 0 到 100 的整数。
+3. 只输出 JSON：
 {
   "reply": "角色反馈",
   "quizRubricResult": {
@@ -144,6 +149,7 @@ export function buildChatUserPrompt(params: {
   payload: ChatRequestPayload;
 }): string {
   const { message, mode, payload } = params;
+
   if (mode === "quiz_eval") {
     return `用户作答：${message}\n题目：${payload.question ?? "无"}`;
   }
@@ -155,4 +161,3 @@ export function buildChatUserPrompt(params: {
   }
   return `用户提问：${message}`;
 }
-

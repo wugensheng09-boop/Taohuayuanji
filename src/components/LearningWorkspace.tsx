@@ -62,6 +62,9 @@ const DEFAULT_AMBIENT_PRIMARY = 0.24;
 const DEFAULT_AMBIENT_SECONDARY = 0.16;
 const VOICE_MIN_GAP_MS = 320;
 const VOICE_PENDING_TIMEOUT_MS = 4200;
+const NPC_SPEECH_FALLBACK_MS = 2200;
+const NPC_SPEECH_MAX_BLOCK_MS = 12000;
+const CHAT_REQUEST_TIMEOUT_MS = 20000;
 const TYPE_CHAR_BASE_MS = 62;
 const TYPE_PUNCT_DELAY_MS = 200;
 const NARRATION_MIN_MS = 2800;
@@ -237,6 +240,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   const [selectedRound1Option, setSelectedRound1Option] = useState<PeerChoiceId | null>(null);
   const [selectedRound4Option, setSelectedRound4Option] = useState<PeerChoiceId | null>(null);
   const [selectedPresetReply, setSelectedPresetReply] = useState<string | null>(null);
+  const [pendingUserMessage, setPendingUserMessage] = useState("");
   const [npcBusy, setNpcBusy] = useState(false);
   const [activeNpcId, setActiveNpcId] = useState<string | null>(null);
   const [activePhase, setActivePhase] = useState<NpcPhase | null>(null);
@@ -340,6 +344,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     setSelectedRound1Option(null);
     setSelectedRound4Option(null);
     setSelectedPresetReply(null);
+    setPendingUserMessage("");
     setNpcBusy(false);
     setActiveNpcId(null);
     setActivePhase(null);
@@ -414,16 +419,28 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   );
 
   const callChat = useCallback(async (payload: Record<string, unknown>) => {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = (await response.json()) as ChatRes;
-    if (!response.ok || !data.reply) {
-      throw new Error(data.error ?? "chat failed");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), CHAT_REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const data = (await response.json()) as ChatRes;
+      if (!response.ok || !data.reply) {
+        throw new Error(data.error ?? "chat failed");
+      }
+      return data;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("chat-timeout");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
     }
-    return data;
   }, []);
 
   const stopVoice = useCallback(() => {
@@ -503,6 +520,14 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     let cancelled = false;
     let lastCharCount = -1;
     let charTimings: number[] = [];
+    let playbackStarted = false;
+    const fallbackRevealTimer =
+      window.setTimeout(() => {
+        if (!playbackStarted) {
+          finalize();
+        }
+      }, NPC_SPEECH_FALLBACK_MS);
+    let watchdogTimer: number | undefined;
 
     const updateTurnText = (charCount: number) => {
       if (charCount === lastCharCount) return;
@@ -513,6 +538,12 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
     const finalize = () => {
       if (cancelled) return;
+      if (fallbackRevealTimer) {
+        window.clearTimeout(fallbackRevealTimer);
+      }
+      if (watchdogTimer) {
+        window.clearTimeout(watchdogTimer);
+      }
       updateTurnText(Array.from(task.fullText).length);
       setNpcSpeechQueue((prev) => prev.slice(1));
       setActiveSpeechTurnId(null);
@@ -528,10 +559,15 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       const durationMs =
         rawDurationMs > maxReasonableMs || rawDurationMs < 280 ? estimateNarrationMs(task.fullText) : rawDurationMs;
       charTimings = buildCharTimingsMs(task.fullText, task.tts.syncWeights, durationMs);
+      if (watchdogTimer) {
+        window.clearTimeout(watchdogTimer);
+      }
+      watchdogTimer = window.setTimeout(finalize, Math.min(NPC_SPEECH_MAX_BLOCK_MS, durationMs + 1800));
     };
 
     const onTimeUpdate = () => {
       if (cancelled || charTimings.length === 0) return;
+      playbackStarted = true;
       const nowMs = audio.currentTime * 1000;
       let charCount = charTimings.findIndex((ms) => ms > nowMs);
       if (charCount < 0) charCount = charTimings.length;
@@ -540,25 +576,39 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
     const onEnded = () => finalize();
     const onError = () => finalize();
+    const onStalled = () => finalize();
 
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
+    audio.addEventListener("stalled", onStalled);
+    audio.addEventListener("abort", onStalled);
+    audio.addEventListener("suspend", onStalled);
 
     audio.src = `data:${task.tts.mimeType};base64,${task.tts.audioBase64}`;
     audio.currentTime = 0;
     audio.playbackRate = task.tts.playbackRate ?? 0.9;
     audio.load();
+    watchdogTimer = window.setTimeout(finalize, NPC_SPEECH_MAX_BLOCK_MS);
     void audio.play().catch(() => finalize());
 
     return () => {
       cancelled = true;
+      if (fallbackRevealTimer) {
+        window.clearTimeout(fallbackRevealTimer);
+      }
+      if (watchdogTimer) {
+        window.clearTimeout(watchdogTimer);
+      }
       audio.pause();
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
+      audio.removeEventListener("stalled", onStalled);
+      audio.removeEventListener("abort", onStalled);
+      audio.removeEventListener("suspend", onStalled);
     };
   }, [activeSpeechTurnId, npcSpeechQueue]);
 
@@ -702,7 +752,8 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
     setNpcBusy(true);
     setCanContinue(false);
-    setSelectedPresetReply(null);
+    setSelectedPresetReply(presetMessage ?? null);
+    setPendingUserMessage(message);
     addTurn("我", message, "user");
     setNpcInput("");
     setManualInputOpen(false);
@@ -730,6 +781,8 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     } catch {
       addTurn(activeNpc.name, "我一时没听清，你再慢慢说一遍。", "npc", activeNpc.portraitImage, getNpcSide(activeNpc));
     } finally {
+      setPendingUserMessage("");
+      setSelectedPresetReply(null);
       setNpcBusy(false);
     }
   }, [activeNpc, activePhase, addTurn, callChat, canContinue, getNpcSide, lessonId, line?.id, npcBusy, npcInput, sceneId, sessionId]);
@@ -762,7 +815,8 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     const latestNpcPrompt = [...turns].reverse().find((item) => item.tone === "npc")?.text;
 
     setNpcBusy(true);
-    setSelectedPresetReply(null);
+    setSelectedPresetReply(presetMessage ?? null);
+    setPendingUserMessage(message);
     addTurn("我", message, "user");
     setNpcInput("");
     setManualInputOpen(false);
@@ -801,6 +855,8 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       addTurn(npc.name, peerFlow.round4.question, "npc", npc.portraitImage, getNpcSide(npc));
       setActivePhase("peer_round4");
     }
+    setPendingUserMessage("");
+    setSelectedPresetReply(null);
     setNpcBusy(false);
   }, [
     activePhase,
@@ -920,6 +976,8 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     if (!node) return;
 
     node.currentTime = 0;
+    node.muted = false;
+    node.volume = 1;
     const p = node.play();
     if (p && typeof p.catch === "function") {
       p.catch(() => setIntroState("blocked"));
@@ -1427,8 +1485,11 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
             className="h-full w-full object-cover opacity-90 transition-opacity duration-1000"
             autoPlay
             playsInline
-            muted
             preload="auto"
+            onLoadedMetadata={(event) => {
+              event.currentTarget.muted = false;
+              event.currentTarget.volume = 1;
+            }}
             onEnded={() => setIntroState("ready")}
             onError={() => setIntroState("ready")}
           />
@@ -1518,6 +1579,15 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
                       </button>
                     ) : null}
                   </div>
+
+                  {npcBusy && pendingUserMessage ? (
+                    <div className="mb-3 rounded-2xl border border-[#d6a86c]/20 bg-[#1a120d]/70 px-4 py-3 text-sm text-[#ead8bf]">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="truncate">已发送：{pendingUserMessage}</span>
+                        <span className="shrink-0 text-xs text-[#d6a86c]">对方回应中...</span>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="w-full flex-1 flex flex-col justify-end">
                     {isPeerRound1 ? (

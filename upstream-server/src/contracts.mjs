@@ -31,7 +31,7 @@ export function validateChatRequest(body) {
 
   return {
     mode: assertString(body.mode, "mode", 64),
-    model: assertString(body.model ?? "default", "model", 128),
+    model: assertString(body.model ?? "qwen-plus", "model", 128),
     message: assertString(body.message, "message", 1200),
     systemPrompt: assertString(body.systemPrompt, "systemPrompt", 50000),
     userPrompt: assertString(body.userPrompt, "userPrompt", 20000),

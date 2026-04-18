@@ -4,6 +4,11 @@ import path from "node:path";
 interface DesktopRuntimeConfig {
   upstreamApiBaseUrl?: string;
   upstreamApiToken?: string;
+  upstreamApiModel?: string;
+  upstreamApiModelFreeAsk?: string;
+  upstreamApiModelRoleplay?: string;
+  upstreamApiModelQuiz?: string;
+  upstreamApiModelLeak?: string;
 }
 
 let cachedDesktopConfig: DesktopRuntimeConfig | null | undefined;

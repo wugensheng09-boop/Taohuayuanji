@@ -141,6 +141,14 @@ const server = createServer(async (req, res) => {
     const statusCode =
       message === "invalid-json" || message === "request-body-too-large" || message.startsWith("Invalid field")
         ? 400
+        : message.startsWith("provider-http-400:")
+          ? 400
+          : message.startsWith("provider-http-401:") || message.startsWith("provider-http-403:")
+            ? 502
+            : message.startsWith("provider-http-404:")
+              ? 502
+              : message.startsWith("provider-http-429:")
+                ? 429
         : message.startsWith("provider-http-")
           ? 502
           : 500;

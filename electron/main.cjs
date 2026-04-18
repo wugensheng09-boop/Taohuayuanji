@@ -21,6 +21,13 @@ function getRuntimeDir() {
   return path.join(getProjectRoot(), ".next", "standalone");
 }
 
+function getPackagedNodePath() {
+  if (!app.isPackaged) {
+    return null;
+  }
+  return path.join(getRuntimeDir(), "runtime-deps");
+}
+
 function getServerEntry() {
   return path.join(getRuntimeDir(), "server.js");
 }
@@ -30,10 +37,12 @@ function getConfiguredPort() {
   if (!raw) {
     return null;
   }
+
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
     return null;
   }
+
   return port;
 }
 
@@ -48,6 +57,7 @@ function findAvailablePort() {
         server.close(() => reject(new Error("failed-to-resolve-port")));
         return;
       }
+
       const port = address.port;
       server.close((error) => {
         if (error) {
@@ -76,7 +86,7 @@ async function waitForServer(url, timeoutMs = 30000) {
         return;
       }
     } catch {
-      // keep polling until the server is ready
+      // Keep polling until the server is ready.
     }
 
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -115,17 +125,20 @@ async function ensureAppUrl() {
   }
 
   const port = getConfiguredPort() ?? (await findAvailablePort());
+  const packagedNodePath = getPackagedNodePath();
+
   serverProcess = fork(serverEntry, [], {
     cwd: runtimeDir,
     env: {
       ...process.env,
       NODE_ENV: "production",
+      ...(packagedNodePath ? { NODE_PATH: packagedNodePath } : {}),
       HOSTNAME: "127.0.0.1",
       PORT: String(port),
       APP_RUNTIME_DIR: runtimeDir,
-      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_TELEMETRY_DISABLED: "1",
     },
-    stdio: "inherit"
+    stdio: "inherit",
   });
 
   serverProcess.on("exit", (code) => {
@@ -153,8 +166,8 @@ async function createMainWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
-    }
+      sandbox: false,
+    },
   });
 
   mainWindow.once("ready-to-show", () => {

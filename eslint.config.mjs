@@ -13,6 +13,9 @@ const eslintConfig = defineConfig([
     "build/**",
     "dist-desktop/**",
     "release/**",
+    "desktop-release/**",
+    "desktop-release*/**",
+    "taohuayuan-mvp/**",
     "next-env.d.ts",
   ]),
 ]);

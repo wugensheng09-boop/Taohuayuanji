@@ -1,5 +1,6 @@
 import { buildChatSystemPrompt, buildChatUserPrompt } from "@/lib/prompts";
 import { hasUpstreamApiConfig, postUpstreamJson } from "@/lib/upstream-api";
+import { readDesktopRuntimeConfig } from "@/lib/runtime-paths";
 import type { ChatRequestPayload } from "@/lib/validators";
 import type { KnowledgeBase, LessonMeta } from "@/types/lesson";
 import type { NpcConfig } from "@/types/npc";
@@ -66,7 +67,7 @@ function guessTags(message: string): string[] {
   if (/主旨|理想|社会|避世|现实|主题/.test(message)) {
     tags.push("theme");
   }
-  if (/结尾|再寻|不复得路|遂迷/.test(message)) {
+  if (/结尾|再寻|不复得路|迷失/.test(message)) {
     tags.push("endingMeaning");
   }
   if (/翻译|注释|词义|文言/.test(message)) {
@@ -106,10 +107,10 @@ function evaluateLeakRisk(payload: ChatRequestPayload, message: string): {
 
   const stageFeedback =
     leakRiskLevel === "high"
-      ? ["你说得太具体了，旁人很容易据此复现路线。", "可以改成只谈感受，不交代可定位的细节。"]
+      ? ["你说得太具体了，旁人已经能据此复原路线。", "可以改成只谈感受，不交代可定位的细节。"]
       : leakRiskLevel === "mid"
-        ? ["这段回答里带了一些线索，再收一收会更稳。", "保留体验和感受即可，尽量避开方位与路径信息。"]
-        : ["分寸把握得不错，你守住了关键秘密。", "继续保持“说感受、不说路径”的表达方式。"];
+        ? ["这段回答里已经带出一些线索，再收一收会更稳。", "保留见闻和感受即可，尽量避开方位与路径信息。"]
+        : ["这次分寸把握得不错，你守住了关键秘密。", "继续保持“说感受，不说路线”的表达方式。"];
 
   return { leakRiskScore, leakRiskLevel, stageFeedback };
 }
@@ -123,15 +124,11 @@ function evaluateQuiz(payload: ChatRequestPayload, message: string): QuizRubricR
   if (payload.questionType === "choice") {
     const correct = payload.correctOptions ?? [];
     const isCorrect = correct.some((item) => item.trim() === text.trim());
-    const textualGrounding = isCorrect ? 88 : 40;
-    const understanding = isCorrect ? 90 : 35;
-    const expression = isCorrect ? 84 : 65;
-    const score = isCorrect ? 88 : 46;
     return {
-      textualGrounding,
-      understanding,
-      expression,
-      score,
+      textualGrounding: isCorrect ? 88 : 40,
+      understanding: isCorrect ? 90 : 35,
+      expression: isCorrect ? 84 : 65,
+      score: isCorrect ? 88 : 46,
       matchedPoints: isCorrect ? [...new Set([...matchedPoints, ...correct])] : matchedPoints,
       missedPoints,
     };
@@ -259,7 +256,7 @@ function buildMockReply(params: GenerateParams, reason?: string): ChatGeneration
   if (mode === "leak_eval") {
     const leak = evaluateLeakRisk(params.payload, params.message);
     return normalizeResult({
-      reply: `同乡听后若有所思。${leak.leakRiskLevel === "high" ? "你这话说得太细了。" : "你这话分寸尚可。"}${suffix}`,
+      reply: `村人听后若有所思。${leak.leakRiskLevel === "high" ? "你这话说得太细了。" : "你这话分寸尚可。"}${suffix}`,
       knowledgeTags: tags.length > 0 ? tags : ["theme"],
       source: "mock",
       leakRiskLevel: leak.leakRiskLevel,
@@ -303,17 +300,25 @@ function buildMockReply(params: GenerateParams, reason?: string): ChatGeneration
 }
 
 function resolveModelForMode(mode: ChatRequestPayload["mode"]): string {
-  const common = process.env.UPSTREAM_API_MODEL ?? "default";
+  const runtimeConfig = readDesktopRuntimeConfig();
+  const common =
+    process.env.UPSTREAM_API_MODEL?.trim() ||
+    runtimeConfig?.upstreamApiModel?.trim() ||
+    "qwen-plus";
   if (mode === "roleplay_chat") {
-    return process.env.UPSTREAM_API_MODEL_ROLEPLAY ?? common;
+    return (
+      process.env.UPSTREAM_API_MODEL_ROLEPLAY?.trim() ||
+      runtimeConfig?.upstreamApiModelRoleplay?.trim() ||
+      common
+    );
   }
   if (mode === "quiz_eval") {
-    return process.env.UPSTREAM_API_MODEL_QUIZ ?? common;
+    return process.env.UPSTREAM_API_MODEL_QUIZ?.trim() || runtimeConfig?.upstreamApiModelQuiz?.trim() || common;
   }
   if (mode === "leak_eval") {
-    return process.env.UPSTREAM_API_MODEL_LEAK ?? common;
+    return process.env.UPSTREAM_API_MODEL_LEAK?.trim() || runtimeConfig?.upstreamApiModelLeak?.trim() || common;
   }
-  return process.env.UPSTREAM_API_MODEL_FREE_ASK ?? common;
+  return process.env.UPSTREAM_API_MODEL_FREE_ASK?.trim() || runtimeConfig?.upstreamApiModelFreeAsk?.trim() || common;
 }
 
 async function requestUpstreamChat(params: {
@@ -462,6 +467,7 @@ export async function generateNpcReply(params: GenerateParams): Promise<ChatGene
 
     return normalizeResult(merged);
   } catch (error) {
+    console.error("[generateNpcReply] upstream request failed", error);
     if (mode === "live") {
       const reason = error instanceof Error ? error.message : "request-failed";
       return normalizeResult({
