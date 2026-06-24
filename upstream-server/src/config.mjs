@@ -33,7 +33,7 @@ export function createConfig() {
       provider: firstDefined(process.env.CHAT_PROVIDER, process.env.AI_PROVIDER) || "mock",
       model:
         firstDefined(process.env.CHAT_MODEL, process.env.BAILIAN_MODEL, process.env.UPSTREAM_API_MODEL) ||
-        "qwen-plus",
+        "qwen3.5-plus",
       baseUrl:
         firstDefined(process.env.CHAT_BASE_URL, process.env.BAILIAN_BASE_URL) ||
         "https://dashscope.aliyuncs.com/compatible-mode/v1",

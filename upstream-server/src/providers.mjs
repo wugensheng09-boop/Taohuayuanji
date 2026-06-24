@@ -152,7 +152,7 @@ async function generateOpenAiCompatibleChat(config, payload) {
       Authorization: `Bearer ${config.chat.apiKey}`,
     },
     {
-      model: payload.model || config.chat.model,
+      model: config.chat.model || payload.model,
       temperature: 0.5,
       max_tokens: 800,
       response_format: { type: "json_object" },
@@ -181,7 +181,7 @@ async function generateBailianChat(config, payload) {
       Authorization: `Bearer ${config.chat.apiKey}`,
     },
     {
-      model: payload.model || config.chat.model,
+      model: config.chat.model || payload.model,
       temperature: 0.5,
       max_tokens: 800,
       response_format: { type: "json_object" },

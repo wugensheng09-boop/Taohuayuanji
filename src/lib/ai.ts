@@ -304,7 +304,7 @@ function resolveModelForMode(mode: ChatRequestPayload["mode"]): string {
   const common =
     process.env.UPSTREAM_API_MODEL?.trim() ||
     runtimeConfig?.upstreamApiModel?.trim() ||
-    "qwen-plus";
+    "qwen3.5-plus";
   if (mode === "roleplay_chat") {
     return (
       process.env.UPSTREAM_API_MODEL_ROLEPLAY?.trim() ||
