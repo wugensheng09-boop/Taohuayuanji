@@ -1,0 +1,46 @@
+{
+  "options": [
+    {
+      "id": "npc_peer_round1_option_A",
+      "text": "哪有什么稀奇事，就是顺着溪涧走迷了路，半条鱼都没打着。",
+      "voiceType": "player",
+      "speed": 1,
+      "style": "更实，更有礼貌感，更有对人说话的方向性，正常中速，句子短，别拖"
+    },
+    {
+      "id": "npc_peer_round1_option_B",
+      "text": "还真被你说中了!我找到了世外桃源了，宛如仙境。",
+      "voiceType": "player",
+      "speed": 1,
+      "style": "更实，更有礼貌感，更有对人说话的方向性，正常中速，句子短，别拖"
+    },
+    {
+      "id": "npc_peer_round1_option_C",
+      "text": "确实见了些从没见过的光景……只是说来蹊跷，不提也罢。",
+      "voiceType": "player",
+      "speed": 1,
+      "style": "更实，更有礼貌感，更有对人说话的方向性，正常中速，句子短，别拖"
+    },
+    {
+      "id": "npc_peer_round4_option_A",
+      "text": "不该。他们既托我守口，我不能失信。",
+      "voiceType": "player",
+      "speed": 1,
+      "style": "更实，更有礼貌感，更有对人说话的方向性，正常中速，句子短，别拖"
+    },
+    {
+      "id": "npc_peer_round4_option_B",
+      "text": "只说其奇，不泄其踪。",
+      "voiceType": "player",
+      "speed": 1,
+      "style": "更实，更有礼貌感，更有对人说话的方向性，正常中速，句子短，别拖"
+    },
+    {
+      "id": "npc_peer_round4_option_C",
+      "text": "该。如此异事，自当上报太守。",
+      "voiceType": "player",
+      "speed": 1,
+      "style": "更实，更有礼貌感，更有对人说话的方向性，正常中速，句子短，别拖"
+    }
+  ]
+}

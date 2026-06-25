@@ -112,6 +112,34 @@ ${basePrompt}
 `.trim();
   }
 
+  if (mode === "interrogation_eval") {
+    return `
+${basePrompt}
+
+任务模式：返乡渔人盘问判定
+当前盘问：${payload.question ?? "未提供题面"}
+
+规则：
+1. 你只评价玩家这一句回答在盘问桌上的效果。
+2. credibilityDelta 表示可信度变化，范围 -30 到 30。
+3. leakRiskDelta 表示泄密风险变化，范围 -30 到 40。
+4. matchedEvidence 只写玩家命中的课文证据标签。
+5. matchedLeakClues 只写玩家暴露的危险线索标签。
+6. reply 要像当前盘问者的短句反应，20 到 45 字。
+7. stageFeedback 给 1 到 3 条简短反馈。
+8. 只输出 JSON：
+{
+  "reply": "盘问者反应",
+  "credibilityDelta": 0,
+  "leakRiskDelta": 0,
+  "matchedEvidence": ["证据标签"],
+  "matchedLeakClues": ["危险线索标签"],
+  "stageFeedback": ["反馈1", "反馈2"],
+  "roleSafetyFlags": []
+}
+`.trim();
+  }
+
   return `
 ${basePrompt}
 
@@ -155,6 +183,9 @@ export function buildChatUserPrompt(params: {
   }
   if (mode === "leak_eval") {
     return `同业渔人打听时，用户回答：${message}`;
+  }
+  if (mode === "interrogation_eval") {
+    return `盘问题：${payload.question ?? "无"}\n玩家回答：${message}`;
   }
   if (mode === "roleplay_chat") {
     return `剧情对话里，用户发言：${message}`;

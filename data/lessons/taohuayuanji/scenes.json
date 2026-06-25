@@ -2,8 +2,8 @@
   {
     "sceneId": "river",
     "title": "溪流行舟",
-    "backgroundImage": "/assets/taohuayuanji/s01_river_boat.jpg",
-    "videoMode": "loop",
+    "backgroundImage": "/assets/taohuayuanji/redesign/river-fishing.png",
+    "videoMode": "play_once_then_image",
     "ambientLayers": {
       "primary": "/audio/taohuayuanji/ambience/河流.MP3",
       "secondary": "/audio/taohuayuanji/ambience/鸟鸣.mp3"
@@ -31,10 +31,10 @@
       }
     ],
     "lineBackgroundOverrides": {
-      "river_l1": "/assets/taohuayuanji/s01_fishing_start.jpg",
-      "river_i1": "/assets/taohuayuanji/s01_river_boat.jpg",
-      "river_i2": "/assets/taohuayuanji/s01_river_boat.jpg",
-      "river_l4": "/assets/taohuayuanji/s01_river_boat.jpg"
+      "river_l1": "/assets/taohuayuanji/redesign/river-fishing.png",
+      "river_i1": "/assets/taohuayuanji/redesign/river-fishing.png",
+      "river_i2": "/assets/taohuayuanji/redesign/river-fishing.png",
+      "river_l4": "/assets/taohuayuanji/redesign/river-fishing.png"
     },
     "timeline": [
       {
@@ -72,8 +72,8 @@
     ],
     "nextSceneId": "peach_forest",
     "bgm": {
-      "src": "/audio/taohuayuanji/ambience/guqin.MP3",
-      "volume": 0.15
+      "src": "/audio/taohuayuanji/bgm/june23-main-theme.mp3",
+      "volume": 0.13
     },
     "transitionChoices": [
       "向前划动",
@@ -84,15 +84,19 @@
       "river_i1": "river_i1",
       "river_i2": "river_i2",
       "river_l4": "river_l4"
-    }
+    },
+    "backgroundVideo": "/videos/taohuayuanji/s02_peach_forest_intro_v2.mp4",
+    "videoStartLineId": "river_i2",
+    "videoBlockSceneExit": false,
+    "videoFallbackImage": "/assets/taohuayuanji/redesign/peach-forest.png"
   },
   {
     "sceneId": "peach_forest",
     "title": "忽逢桃花林",
-    "backgroundImage": "/assets/taohuayuanji/s02_peach_forest.jpg",
+    "backgroundImage": "/assets/taohuayuanji/redesign/peach-forest.png",
     "backgroundVideo": "/videos/taohuayuanji/s02_peach_forest_intro_v2.mp4",
-    "videoMode": "loop",
-    "videoFallbackImage": "/assets/taohuayuanji/s02_peach_forest.jpg",
+    "videoMode": "play_once_then_image",
+    "videoFallbackImage": "/assets/taohuayuanji/redesign/peach-forest.png",
     "ambientLayers": {
       "primary": "/audio/taohuayuanji/ambience/鸟鸣.mp3",
       "secondary": "/audio/taohuayuanji/ambience/风声.MP3"
@@ -155,8 +159,8 @@
     ],
     "nextSceneId": "cave_entry",
     "bgm": {
-      "src": "/audio/taohuayuanji/ambience/古琴.MP3",
-      "volume": 0.22
+      "src": "/audio/taohuayuanji/bgm/june23-main-theme.mp3",
+      "volume": 0.16
     },
     "transitionChoices": [
       "踏花深入",
@@ -172,11 +176,11 @@
   {
     "sceneId": "cave_entry",
     "title": "山洞入口",
-    "backgroundImage": "/assets/taohuayuanji/s03_cave_entrance.png",
+    "backgroundImage": "/assets/taohuayuanji/redesign/cave-mouth.png",
     "backgroundVideo": "/videos/taohuayuanji/s03_enter_cave_v3.mp4",
     "videoStartLineId": "cave_l4",
     "videoMode": "play_once_then_image",
-    "videoFallbackImage": "/assets/taohuayuanji/s03_cave_inside_fallback.png",
+    "videoFallbackImage": "/assets/taohuayuanji/redesign/cave-interior.png",
     "ambientLayers": {
       "primary": "/audio/taohuayuanji/ambience/风声.MP3",
       "secondary": "/audio/taohuayuanji/ambience/河流.MP3"
@@ -210,20 +214,31 @@
         "voiceTrack": "scene"
       },
       {
-        "id": "cave_i1",
-        "speakerMode": "narrator",
-        "lineType": "auto",
-        "text": "山间像有一道小口，我把船慢慢靠过去。",
-        "autoNextMs": 2600,
-        "voiceTrack": "inner"
-      },
-      {
         "id": "cave_i2",
         "speakerMode": "narrator",
         "lineType": "auto",
         "text": "山有小口，仿佛若有光。",
         "autoNextMs": 1800,
         "voiceTrack": "quote"
+      },
+      {
+        "id": "cave_i0",
+        "speakerMode": "narrator",
+        "lineType": "checkpoint",
+        "text": "",
+        "autoNextMs": 0,
+        "checkpointChoices": [
+          "弃舟上岸",
+          "舍船入洞"
+        ]
+      },
+      {
+        "id": "cave_i1",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "我弃舟上岸，慢慢走近。",
+        "autoNextMs": 2600,
+        "voiceTrack": "inner"
       },
       {
         "id": "cave_l4",
@@ -236,8 +251,8 @@
     ],
     "nextSceneId": "first_view",
     "bgm": {
-      "src": "/audio/taohuayuanji/ambience/风声.MP3",
-      "volume": 0.09
+      "src": "/audio/taohuayuanji/bgm/june23-main-theme.mp3",
+      "volume": 0.1
     },
     "transitionChoices": [
       "弃舟登岸",
@@ -253,12 +268,12 @@
   {
     "sceneId": "first_view",
     "title": "初入桃源",
-    "backgroundImage": "/assets/taohuayuanji/s05_village_talk.png",
+    "backgroundImage": "/assets/taohuayuanji/redesign/village-entry.png",
     "backgroundVideo": "/videos/taohuayuanji/s04_after_cave.mp4",
     "videoMode": "play_once_then_image",
-    "videoFallbackImage": "/assets/taohuayuanji/s05_village_talk.png",
+    "videoFallbackImage": "/assets/taohuayuanji/redesign/village-entry.png",
     "ambientLayers": {
-      "primary": "/audio/taohuayuanji/ambience/古琴.MP3",
+      "primary": "/audio/taohuayuanji/ambience/河流.MP3",
       "secondary": "/audio/taohuayuanji/ambience/鸟鸣.mp3"
     },
     "cameraPreset": "brighten",
@@ -321,8 +336,8 @@
     ],
     "nextSceneId": "village_talk",
     "bgm": {
-      "src": "/audio/taohuayuanji/ambience/古琴.MP3",
-      "volume": 0.2
+      "src": "/audio/taohuayuanji/bgm/june23-main-theme.mp3",
+      "volume": 0.17
     },
     "transitionChoices": [
       "向前划动",
@@ -338,11 +353,11 @@
   {
     "sceneId": "village_talk",
     "title": "村中见闻",
-    "backgroundImage": "/assets/taohuayuanji/Gemini_Generated_Image_cjm6gicjm6gicjm6.png",
-    "videoMode": "loop",
+    "backgroundImage": "/assets/taohuayuanji/redesign/village-banquet.png",
+    "videoFallbackImage": "/assets/taohuayuanji/redesign/village-banquet.png",
     "ambientLayers": {
       "primary": "/audio/taohuayuanji/ambience/村中生活声.MP3",
-      "secondary": "/audio/taohuayuanji/ambience/古琴.MP3"
+      "secondary": "/audio/taohuayuanji/ambience/鸟鸣.mp3"
     },
     "cameraPreset": "none",
     "transitionActionLabel": "辞别村落",
@@ -404,8 +419,8 @@
     ],
     "nextSceneId": "lost_path",
     "bgm": {
-      "src": "/audio/taohuayuanji/ambience/古琴.MP3",
-      "volume": 0.18
+      "src": "/audio/taohuayuanji/bgm/june23-main-theme.mp3",
+      "volume": 0.15
     },
     "transitionChoices": [
       "向前划动",
@@ -429,7 +444,7 @@
     },
     "cameraPreset": "pull_back",
     "transitionActionLabel": "再寻旧路",
-    "description": "既出，得其船，便扶向路，处处志之。寻向所志，遂迷，不复得路。",
+    "description": "",
     "npcs": [
       "narrator",
       "fisherman"
@@ -452,51 +467,93 @@
         "speakerMode": "narrator",
         "lineType": "auto",
         "text": "离开桃源后，我沿路做下记号。",
-        "autoNextMs": 3400,
+        "autoNextMs": 2000,
         "voiceTrack": "scene"
       },
+      {
+        "id": "ending_i0",
+        "speakerMode": "narrator",
+        "lineType": "auto",
+        "text": "",
+        "autoNextMs": 0,
+        "interactionMode": "npc2",
+        "interactionKey": "peer_fisher_chain"
+      }
+    ],
+    "nextSceneId": "lost_path_epilogue",
+    "bgm": {
+      "src": "/audio/taohuayuanji/bgm/june23-main-theme.mp3",
+      "volume": 0.12
+    },
+    "transitionChoices": [
+      "继续前进",
+      "继续前进"
+    ],
+    "lineBackgroundOverrides": {
+      "ending_l1": "/assets/taohuayuanji/s055_return_mark.png",
+      "ending_i0": "/assets/taohuayuanji/同业渔民询问.png"
+    },
+    "lineVoiceOverrides": {
+      "ending_l1": "ending_l1"
+    }
+  },
+  {
+    "sceneId": "lost_path_epilogue",
+    "title": "再寻旧路",
+    "backgroundImage": "/assets/taohuayuanji/lost-path-mist.png",
+    "videoMode": "loop",
+    "ambientLayers": {
+      "primary": "/audio/taohuayuanji/ambience/风声.MP3",
+      "secondary": "/audio/taohuayuanji/ambience/河流.MP3"
+    },
+    "cameraPreset": "pull_back",
+    "transitionActionLabel": "收束此行",
+    "description": "",
+    "npcs": [
+      "narrator",
+      "fisherman"
+    ],
+    "hotspots": [],
+    "learningGoals": [
+      "理解结尾留白",
+      "体会理想与现实的距离"
+    ],
+    "tasks": [
+      {
+        "id": "task_ending_02",
+        "type": "analysis",
+        "content": "结尾两句旁白如何强化“再寻不得”的意味？"
+      }
+    ],
+    "timeline": [
       {
         "id": "ending_i1",
         "speakerMode": "narrator",
         "lineType": "auto",
-        "text": "回到武陵，同业渔人立刻围上来追问。",
+        "text": "引来众人追问之后，不断有人再循着记号去找，即便和我一起前往，竟也还是迷了路。",
         "autoNextMs": 2600,
-        "interactionMode": "npc2",
-        "interactionKey": "peer_fisher_chain",
         "voiceTrack": "scene"
-      },
-      {
-        "id": "ending_i2",
-        "speakerMode": "narrator",
-        "lineType": "auto",
-        "text": "寻向所志，遂迷，不复得路。",
-        "autoNextMs": 1800,
-        "voiceTrack": "quote"
       },
       {
         "id": "ending_l4",
         "speakerMode": "narrator",
         "lineType": "auto",
         "text": "我这才懂得，有些地方能遇见，却未必能再抵达。",
-        "autoNextMs": 2200,
+        "autoNextMs": 2600,
         "voiceTrack": "inner"
       }
     ],
     "nextSceneId": null,
     "bgm": {
-      "src": "/audio/taohuayuanji/ambience/guqin.MP3",
+      "src": "/audio/taohuayuanji/bgm/june23-main-theme.mp3",
       "volume": 0.12
     },
     "lineBackgroundOverrides": {
-      "ending_l1": "/assets/taohuayuanji/s055_return_mark.png",
-      "ending_i1": "/assets/taohuayuanji/同业渔民询问.png",
-      "ending_i2": "/assets/taohuayuanji/s06_lost_path.png",
-      "ending_l4": "/assets/taohuayuanji/s06_lost_path.png"
+      "ending_i1": "/assets/taohuayuanji/lost-path-mist.png",
+      "ending_l4": "/assets/taohuayuanji/lost-path-mist.png"
     },
     "lineVoiceOverrides": {
-      "ending_l1": "ending_l1",
       "ending_i1": "ending_i1",
-      "ending_i2": "ending_i2",
       "ending_l4": "ending_l4"
     }
   }

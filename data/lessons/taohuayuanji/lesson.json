@@ -4,7 +4,7 @@
   "author": "陶渊明",
   "era": "东晋",
   "intro": "跟随渔人的足迹，穿越进入《桃花源记》的七段沉浸场景，在探索与对话中理解文言文意境、结构与主旨。",
-  "coverImage": "/assets/taohuayuanji/cover.png",
+  "coverImage": "/assets/taohuayuanji/redesign/home-entry.png",
   "entrySceneId": "river",
   "sceneOrder": [
     "river",

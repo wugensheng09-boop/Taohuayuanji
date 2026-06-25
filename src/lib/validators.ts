@@ -4,8 +4,9 @@ export interface ChatRequestPayload {
   sceneId: string;
   npcId: string;
   message: string;
-  mode: "free_ask" | "roleplay_chat" | "quiz_eval" | "leak_eval";
+  mode: "free_ask" | "roleplay_chat" | "quiz_eval" | "leak_eval" | "interrogation_eval";
   lineId?: string;
+  turnId?: string;
   attempt?: number;
   expectedIntents?: string[];
   maxGuideTurns?: number;
@@ -53,12 +54,15 @@ export function parseChatPayload(body: unknown): ChatRequestPayload {
   const mode: ChatRequestPayload["mode"] =
     modeRaw === "roleplay_chat" ||
     modeRaw === "quiz_eval" ||
-    modeRaw === "leak_eval"
+    modeRaw === "leak_eval" ||
+    modeRaw === "interrogation_eval"
       ? modeRaw
       : "free_ask";
 
   const lineIdRaw = payload.lineId;
   const lineId = typeof lineIdRaw === "string" && lineIdRaw.trim() ? lineIdRaw.trim() : undefined;
+  const turnIdRaw = payload.turnId;
+  const turnId = typeof turnIdRaw === "string" && turnIdRaw.trim() ? turnIdRaw.trim() : undefined;
 
   const attemptRaw = payload.attempt;
   const attempt =
@@ -142,6 +146,7 @@ export function parseChatPayload(body: unknown): ChatRequestPayload {
     message,
     mode,
     lineId,
+    turnId,
     attempt,
     expectedIntents,
     maxGuideTurns,

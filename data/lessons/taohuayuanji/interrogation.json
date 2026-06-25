@@ -1,0 +1,152 @@
+{
+  "lessonId": "taohuayuanji",
+  "title": "桃源守密局",
+  "subtitle": "你已回到武陵。有人想听奇闻，有人想拿路引。说得太虚会被识破，说得太细会泄露桃源。",
+  "sceneId": "lost_path",
+  "backgroundImage": "/assets/taohuayuanji/redesign/guard-magistrate.png",
+  "startingCredibility": 50,
+  "startingLeakRisk": 0,
+  "minAnswerChars": 8,
+  "characters": [
+    {
+      "id": "peer_fisher",
+      "name": "同业渔人",
+      "role": "武陵同乡渔人",
+      "portraitImage": "/assets/taohuayuanji/同业渔民询问.png",
+      "tone": "熟络、好奇、不断套话"
+    },
+    {
+      "id": "officer",
+      "name": "郡府差役",
+      "role": "奉太守命记录异闻的差役",
+      "portraitImage": "/assets/taohuayuanji/officer_guard.svg",
+      "tone": "冷静、压迫、抓可复现线索"
+    }
+  ],
+  "guardedTerms": [
+    "不足为外人道",
+    "不便细说",
+    "不可泄露",
+    "只谈感受",
+    "不说路径",
+    "守口",
+    "不愿外人扰",
+    "不敢妄言",
+    "难以尽述"
+  ],
+  "evidencePool": [
+    {
+      "label": "桃花林奇景",
+      "terms": ["中无杂树", "芳草鲜美", "落英缤纷", "夹岸数百步", "忽逢桃花林"],
+      "weight": 7
+    },
+    {
+      "label": "洞中转折",
+      "terms": ["初极狭", "才通人", "复行数十步", "豁然开朗"],
+      "weight": 7
+    },
+    {
+      "label": "村中安宁",
+      "terms": ["阡陌交通", "鸡犬相闻", "黄发垂髫", "怡然自乐", "屋舍俨然"],
+      "weight": 7
+    },
+    {
+      "label": "避世缘由",
+      "terms": ["先世避秦时乱", "不复出焉", "遂与外人间隔", "乃不知有汉", "无论魏晋"],
+      "weight": 8
+    },
+    {
+      "label": "守密嘱托",
+      "terms": ["不足为外人道", "不愿外人扰", "守口", "不便细说", "不说路径"],
+      "weight": 9
+    }
+  ],
+  "leakClues": [
+    {
+      "label": "入口",
+      "terms": ["洞口", "小口", "仿佛若有光", "入口", "山有小口"],
+      "weight": 16
+    },
+    {
+      "label": "水路",
+      "terms": ["沿溪", "顺流", "溪水", "水路", "缘溪行", "林尽水源"],
+      "weight": 14
+    },
+    {
+      "label": "步数",
+      "terms": ["数百步", "数十步", "几百步", "几十步", "复行数十步"],
+      "weight": 12
+    },
+    {
+      "label": "标记",
+      "terms": ["处处志之", "标记", "记号", "做记号", "路标"],
+      "weight": 18
+    },
+    {
+      "label": "官府线索",
+      "terms": ["太守", "上报", "带人去", "派人去", "可寻"],
+      "weight": 12
+    }
+  ],
+  "turns": [
+    {
+      "id": "peer_probe",
+      "act": 1,
+      "speakerId": "peer_fisher",
+      "speakerName": "同业渔人",
+      "prompt": "你可算回来了。有人说你撞见了奇地，别藏着，那里到底有什么？",
+      "pressure": "熟人套话",
+      "evidenceLabels": ["桃花林奇景", "村中安宁", "守密嘱托"],
+      "leakLabels": ["入口", "水路", "步数", "标记"],
+      "followup": "他说得像闲聊，眼睛却一直盯着你有没有说出路。"
+    },
+    {
+      "id": "officer_route",
+      "act": 2,
+      "speakerId": "officer",
+      "speakerName": "郡府差役",
+      "prompt": "太守听闻此事，命我问明。你从何处入山？沿哪条水路？可有记号？",
+      "pressure": "官府取证",
+      "evidenceLabels": ["洞中转折", "村中安宁", "守密嘱托"],
+      "leakLabels": ["入口", "水路", "步数", "标记", "官府线索"],
+      "followup": "差役的笔停在纸上，只等你说出能复寻的细节。"
+    },
+    {
+      "id": "officer_motive",
+      "act": 3,
+      "speakerId": "officer",
+      "speakerName": "郡府差役",
+      "prompt": "若真有其地，为何不报官？那些人为何不愿外人知道？你最好说得清楚。",
+      "pressure": "动机审问",
+      "evidenceLabels": ["避世缘由", "守密嘱托", "村中安宁"],
+      "leakLabels": ["官府线索", "入口", "标记"],
+      "followup": "这一问不再只问路线，而是在试你是否理解桃源人为何避世。"
+    }
+  ],
+  "endings": [
+    {
+      "id": "safe",
+      "title": "守密成功",
+      "minCredibility": 62,
+      "maxLeakRisk": 46,
+      "narrative": "你留下了足够可信的见闻，却没有交出可复寻的路径。风声渐息，桃源仍隐在山水之间。",
+      "advice": "你抓住了文本证据，也守住了“不足为外人道”的边界。"
+    },
+    {
+      "id": "thin_escape",
+      "title": "含糊脱身",
+      "minCredibility": 36,
+      "maxLeakRisk": 72,
+      "narrative": "他们没有拿到完整路线，却也并未完全信你。传闻还会在武陵城里发酵。",
+      "advice": "下一次可以多引用原文画面，同时少说方位、入口、标记。"
+    },
+    {
+      "id": "leaked",
+      "title": "泄密失守",
+      "minCredibility": 0,
+      "maxLeakRisk": 100,
+      "narrative": "你说出的线索已经能让人按图索骥。郡府很快会遣人循迹而往，桃源的安宁不再稳固。",
+      "advice": "可复现的路径细节最危险：沿溪、洞口、步数、标记，都应避开。"
+    }
+  ]
+}

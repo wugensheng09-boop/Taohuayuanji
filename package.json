@@ -2,14 +2,18 @@
   "name": "taohuayuan-mvp",
   "version": "0.1.0",
   "private": true,
-  "description": "Immersive lesson desktop app for Textbook World Traverser.",
+  "description": "Immersive lesson desktop app for 入画文游.",
   "author": "Local Build",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "render:web:build": "next build && node scripts/prepare-render-web.mjs",
     "start": "next start",
     "lint": "eslint",
+    "test:interrogation": "node --test tests/interrogation-evaluator.test.mjs",
+    "test:peer-scoring": "node --test tests/peer-fisher-scoring.test.mjs",
+    "test:rokid": "node --test tests/rokid-device.test.mjs tests/rokid-android-scaffold.test.mjs",
     "upstream:dev": "node upstream-server/src/server.mjs",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:prepare": "node scripts/prepare-desktop-build.mjs",
@@ -17,6 +21,8 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.11.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"
@@ -35,7 +41,7 @@
   },
   "build": {
     "appId": "com.taohuayuan.desktop",
-    "productName": "课本世界穿越器",
+    "productName": "入画文游",
     "directories": {
       "output": "desktop-release",
       "buildResources": "src/app"
@@ -84,7 +90,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "课本世界穿越器-Setup-${version}.${ext}"
+      "artifactName": "入画文游-Setup-${version}.${ext}"
     }
   }
 }

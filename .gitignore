@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/test-results
+/output
 
 # next.js
 /.next/
@@ -24,11 +26,21 @@
 /desktop-release
 /desktop-release*
 /taohuayuan-mvp
+/rokid/android/.gradle/
+/rokid/android/.kotlin/
+/rokid/android/**/build/
+/rokid/android/local.properties
+/public/audio/taohuayuanji/New audio/
+/public/videos/taohuayuanji/village-banquet.mp4
 
 # misc
 .DS_Store
 *.pem
 .vs/
+.superpowers/
+.tmp-*/
+.tmp-*
+tmp-*
 *.log
 .tmp_*.log
 

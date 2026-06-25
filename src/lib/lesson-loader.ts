@@ -1,14 +1,16 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { resolveRuntimePath } from "@/lib/runtime-paths";
 import type { EpilogueConfig } from "@/types/epilogue";
+import type { InterrogationConfig } from "@/types/interrogation";
 import type { LessonBundle, LessonMeta, KnowledgeBase } from "@/types/lesson";
 import type { NpcConfig } from "@/types/npc";
 import type { SceneConfig } from "@/types/scene";
 
-const DATA_ROOT = resolveRuntimePath("data", "lessons");
+const RUNTIME_ROOT = process.env.APP_RUNTIME_DIR?.trim() || process.cwd();
+const DATA_ROOT = path.join(RUNTIME_ROOT, "data", "lessons");
 const bundleCache = new Map<string, LessonBundle>();
+const interrogationCache = new Map<string, InterrogationConfig>();
 
 async function readJson<T>(filePath: string): Promise<T> {
   const raw = await fs.readFile(filePath, "utf8");
@@ -38,6 +40,17 @@ export async function loadLessonBundle(lessonId: string): Promise<LessonBundle> 
   const bundle: LessonBundle = { lesson, scenes, npcs, knowledge, epilogue };
   bundleCache.set(lessonId, bundle);
   return bundle;
+}
+
+export async function loadInterrogationConfig(lessonId: string): Promise<InterrogationConfig> {
+  if (interrogationCache.has(lessonId)) {
+    return interrogationCache.get(lessonId)!;
+  }
+
+  const lessonDir = path.join(DATA_ROOT, lessonId);
+  const config = await readJson<InterrogationConfig>(path.join(lessonDir, "interrogation.json"));
+  interrogationCache.set(lessonId, config);
+  return config;
 }
 
 export async function loadLessonMetaList(): Promise<LessonMeta[]> {

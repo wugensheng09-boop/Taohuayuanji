@@ -21,27 +21,27 @@ function resolveVoiceForNpc(npcId: string): NpcVoiceProfile {
     return {
       profileId: "young_male",
       voice: process.env.TTS_VOICE_AQIAO ?? "Noah",
-      speed: 0.92,
+      speed: 1.0,
     };
   }
   if (npcId === "chief") {
     return {
       profileId: "elder_male",
       voice: process.env.TTS_VOICE_CHIEF ?? "Eric",
-      speed: 0.82,
+      speed: 1.0,
     };
   }
   if (npcId === "peer_fisher") {
     return {
       profileId: "adult_male",
       voice: process.env.TTS_VOICE_PEER ?? "Roger",
-      speed: 0.95,
+      speed: 1.0,
     };
   }
   return {
     profileId: "narrator",
     voice: process.env.TTS_VOICE_DEFAULT ?? "Brenda",
-    speed: 0.85,
+    speed: 1.0,
   };
 }
 

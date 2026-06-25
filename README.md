@@ -201,3 +201,10 @@ npm run build
 npm run desktop:prepare
 npm run desktop:dist
 ```
+
+## Font Attribution
+
+- Cover title brush font: `Ma Shan Zheng`
+- Source: Google Fonts (`https://fonts.google.com/specimen/Ma+Shan+Zheng`)
+- License: SIL Open Font License 1.1 (OFL)
+- Local file: `public/fonts/MaShanZheng-Regular.ttf`

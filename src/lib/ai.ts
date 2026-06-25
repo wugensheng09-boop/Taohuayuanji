@@ -26,6 +26,10 @@ export interface ChatGenerationResult {
   roleSafetyFlags?: string[];
   leakRiskLevel?: "low" | "mid" | "high";
   leakRiskScore?: number;
+  credibilityDelta?: number;
+  leakRiskDelta?: number;
+  matchedEvidence?: string[];
+  matchedLeakClues?: string[];
   quizRubricResult?: QuizRubricResult;
   stageFeedback?: string[];
   dimensionNotes?: string[];
@@ -45,6 +49,10 @@ type AiMode = "auto" | "mock" | "live";
 
 function clampScore(score: number): number {
   return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function clampDelta(score: number): number {
+  return Math.max(-100, Math.min(100, Math.round(score)));
 }
 
 function clampRisk(score: number): number {
@@ -176,6 +184,16 @@ function normalizeResult(input: Partial<ChatGenerationResult>): ChatGenerationRe
       typeof input.leakRiskScore === "number" && Number.isFinite(input.leakRiskScore)
         ? clampRisk(input.leakRiskScore)
         : undefined,
+    credibilityDelta:
+      typeof input.credibilityDelta === "number" && Number.isFinite(input.credibilityDelta)
+        ? clampDelta(input.credibilityDelta)
+        : undefined,
+    leakRiskDelta:
+      typeof input.leakRiskDelta === "number" && Number.isFinite(input.leakRiskDelta)
+        ? clampDelta(input.leakRiskDelta)
+        : undefined,
+    matchedEvidence: (input.matchedEvidence ?? []).slice(0, 6),
+    matchedLeakClues: (input.matchedLeakClues ?? []).slice(0, 6),
     quizRubricResult: rubric,
     stageFeedback: (input.stageFeedback ?? []).slice(0, 4),
     dimensionNotes: (input.dimensionNotes ?? []).slice(0, 4),
@@ -304,7 +322,7 @@ function resolveModelForMode(mode: ChatRequestPayload["mode"]): string {
   const common =
     process.env.UPSTREAM_API_MODEL?.trim() ||
     runtimeConfig?.upstreamApiModel?.trim() ||
-    "qwen-plus";
+    "qwen3.5-plus";
   if (mode === "roleplay_chat") {
     return (
       process.env.UPSTREAM_API_MODEL_ROLEPLAY?.trim() ||
@@ -316,6 +334,9 @@ function resolveModelForMode(mode: ChatRequestPayload["mode"]): string {
     return process.env.UPSTREAM_API_MODEL_QUIZ?.trim() || runtimeConfig?.upstreamApiModelQuiz?.trim() || common;
   }
   if (mode === "leak_eval") {
+    return process.env.UPSTREAM_API_MODEL_LEAK?.trim() || runtimeConfig?.upstreamApiModelLeak?.trim() || common;
+  }
+  if (mode === "interrogation_eval") {
     return process.env.UPSTREAM_API_MODEL_LEAK?.trim() || runtimeConfig?.upstreamApiModelLeak?.trim() || common;
   }
   return process.env.UPSTREAM_API_MODEL_FREE_ASK?.trim() || runtimeConfig?.upstreamApiModelFreeAsk?.trim() || common;
