@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "课本世界穿越器",
-  description: "《桃花源记》全屏沉浸式文言文学习演示",
+  title: "入画文游",
+  description: "从课文出发，进入场景、人物与提问的沉浸式文言文学习体验。",
 };
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+      <body className="min-h-screen bg-[#090705] antialiased">{children}</body>
     </html>
   );
 }

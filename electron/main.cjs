@@ -1,14 +1,43 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { app, BrowserWindow, dialog } = require("electron");
-const { existsSync } = require("node:fs");
+const { appendFileSync, existsSync, mkdirSync } = require("node:fs");
 const { fork } = require("node:child_process");
 const net = require("node:net");
 const path = require("node:path");
+
+const APP_NAME = "入画文游";
+const SERVER_START_TIMEOUT_MS = 60000;
 
 let mainWindow = null;
 let serverProcess = null;
 let appUrl = null;
 let appIsQuitting = false;
+let logFilePath = null;
+
+function resolveLogFilePath() {
+  if (logFilePath) {
+    return logFilePath;
+  }
+
+  try {
+    const logDir = path.join(app.getPath("userData"), "logs");
+    mkdirSync(logDir, { recursive: true });
+    logFilePath = path.join(logDir, "desktop-runtime.log");
+    return logFilePath;
+  } catch {
+    return null;
+  }
+}
+
+function writeLog(message) {
+  try {
+    const target = resolveLogFilePath();
+    if (!target) return;
+    appendFileSync(target, `[${new Date().toISOString()}] ${message}\n`, "utf8");
+  } catch {
+    // ignore logging failures
+  }
+}
 
 function getProjectRoot() {
   return path.join(__dirname, "..");
@@ -70,10 +99,13 @@ function findAvailablePort() {
   });
 }
 
-async function waitForServer(url, timeoutMs = 30000) {
+async function waitForServer(url, timeoutMs = SERVER_START_TIMEOUT_MS) {
   const startedAt = Date.now();
+  writeLog(`waitForServer:start url=${url} timeoutMs=${timeoutMs}`);
+
   while (Date.now() - startedAt < timeoutMs) {
     if (serverProcess && serverProcess.exitCode !== null) {
+      writeLog(`waitForServer:server-exited-early code=${serverProcess.exitCode}`);
       throw new Error(`server-exited-early:${serverProcess.exitCode}`);
     }
 
@@ -83,6 +115,7 @@ async function waitForServer(url, timeoutMs = 30000) {
         cache: "no-store",
       });
       if (response.ok) {
+        writeLog(`waitForServer:healthy status=${response.status}`);
         return;
       }
     } catch {
@@ -92,6 +125,7 @@ async function waitForServer(url, timeoutMs = 30000) {
     await new Promise((resolve) => setTimeout(resolve, 350));
   }
 
+  writeLog("waitForServer:timeout");
   throw new Error("server-start-timeout");
 }
 
@@ -100,9 +134,11 @@ function stopServer() {
     return;
   }
 
+  writeLog("stopServer:kill");
   serverProcess.kill();
   setTimeout(() => {
     if (serverProcess && !serverProcess.killed) {
+      writeLog("stopServer:sigkill");
       serverProcess.kill("SIGKILL");
     }
   }, 3000).unref();
@@ -120,12 +156,18 @@ async function ensureAppUrl() {
 
   const runtimeDir = getRuntimeDir();
   const serverEntry = getServerEntry();
+  writeLog(`ensureAppUrl:runtimeDir=${runtimeDir}`);
+  writeLog(`ensureAppUrl:serverEntry=${serverEntry}`);
+
   if (!existsSync(serverEntry)) {
+    writeLog("ensureAppUrl:missing-server-entry");
     throw new Error(`missing-server-entry:${serverEntry}`);
   }
 
   const port = getConfiguredPort() ?? (await findAvailablePort());
   const packagedNodePath = getPackagedNodePath();
+  writeLog(`ensureAppUrl:port=${port}`);
+  writeLog(`ensureAppUrl:nodePath=${packagedNodePath ?? "none"}`);
 
   serverProcess = fork(serverEntry, [], {
     cwd: runtimeDir,
@@ -138,12 +180,22 @@ async function ensureAppUrl() {
       APP_RUNTIME_DIR: runtimeDir,
       NEXT_TELEMETRY_DISABLED: "1",
     },
-    stdio: "inherit",
+    silent: true,
   });
 
+  serverProcess.stdout?.on("data", (chunk) => {
+    writeLog(`server:stdout ${String(chunk).trim()}`);
+  });
+  serverProcess.stderr?.on("data", (chunk) => {
+    writeLog(`server:stderr ${String(chunk).trim()}`);
+  });
+  serverProcess.on("error", (error) => {
+    writeLog(`server:error ${error instanceof Error ? error.message : String(error)}`);
+  });
   serverProcess.on("exit", (code) => {
+    writeLog(`server:exit code=${code ?? "unknown"}`);
     if (!appIsQuitting && code !== 0) {
-      dialog.showErrorBox("课本世界穿越器", `内置服务异常退出，退出码：${code ?? "unknown"}`);
+      dialog.showErrorBox(APP_NAME, `内置服务异常退出，退出码：${code ?? "unknown"}`);
     }
   });
 
@@ -185,10 +237,13 @@ async function createMainWindow() {
 
 app.whenReady().then(async () => {
   try {
+    app.setName(APP_NAME);
+    writeLog("app:ready");
     await createMainWindow();
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown-error";
-    dialog.showErrorBox("课本世界穿越器", `桌面应用启动失败：${message}`);
+    writeLog(`app:start-failed ${message}`);
+    dialog.showErrorBox(APP_NAME, `桌面应用启动失败：${message}`);
     app.quit();
   }
 

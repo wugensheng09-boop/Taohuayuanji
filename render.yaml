@@ -43,3 +43,29 @@ services:
         sync: false
       - key: TTS_API_KEY
         sync: false
+  - type: web
+    name: textbook-world-web
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run render:web:build
+    startCommand: cd .next/standalone && node server.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: ELECTRON_SKIP_BINARY_DOWNLOAD
+        value: "1"
+      - key: AI_MODE
+        value: auto
+      - key: UPSTREAM_API_BASE_URL
+        value: https://textbook-world-upstream-nvwc.onrender.com
+      - key: UPSTREAM_API_TOKEN
+        fromService:
+          type: web
+          name: textbook-world-upstream
+          envVarKey: UPSTREAM_API_TOKEN

@@ -19,6 +19,37 @@ async function copyIfExists(source, destination) {
   await cp(source, destination, { recursive: true, force: true });
 }
 
+function isLocalUpstreamUrl(value) {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return ["127.0.0.1", "localhost", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function assertReleaseUpstreamConfig(config) {
+  if (!config.upstreamApiBaseUrl) {
+    throw new Error(
+      "UPSTREAM_API_BASE_URL is required for desktop release builds. Set it to the deployed upstream-server URL.",
+    );
+  }
+
+  if (isLocalUpstreamUrl(config.upstreamApiBaseUrl) && process.env.ALLOW_LOCAL_UPSTREAM_FOR_DESKTOP !== "1") {
+    throw new Error(
+      [
+        "UPSTREAM_API_BASE_URL points to localhost, so installed desktop apps will fall back when port 8787 is not running.",
+        "Deploy upstream-server first and set UPSTREAM_API_BASE_URL to its https://... URL.",
+        "For a local smoke build only, set ALLOW_LOCAL_UPSTREAM_FOR_DESKTOP=1.",
+      ].join("\n"),
+    );
+  }
+}
+
 async function main() {
   await rm(outputRoot, { recursive: true, force: true });
   await mkdir(runtimeDir, { recursive: true });
@@ -49,6 +80,27 @@ async function main() {
     "out.log",
     "release",
     "desktop-release",
+    "desktop-release-v2",
+    "desktop-release-v3",
+    "desktop-release-v4",
+    "desktop-release-v5",
+    "desktop-release-v6",
+    "desktop-release-v7",
+    "desktop-release-v8",
+    "upstream-server",
+    "render.yaml",
+    ".env",
+    ".env.local",
+    ".env.example",
+    "tmp-aqiao-err.log",
+    "tmp-aqiao-out.log",
+    "tmp-aqiao-response.json",
+    "tmp-fail-err.log",
+    "tmp-fail-out.log",
+    "tmp-local-err.log",
+    "tmp-local-out.log",
+    "tmp-runtime-err.log",
+    "tmp-runtime-out.log",
   ];
 
   await Promise.all(
@@ -66,6 +118,8 @@ async function main() {
     upstreamApiModelQuiz: process.env.UPSTREAM_API_MODEL_QUIZ?.trim() || undefined,
     upstreamApiModelLeak: process.env.UPSTREAM_API_MODEL_LEAK?.trim() || undefined,
   };
+
+  assertReleaseUpstreamConfig(config);
 
   if (config.upstreamApiBaseUrl || config.upstreamApiToken) {
     await writeFile(path.join(runtimeDir, "desktop-config.json"), JSON.stringify(config, null, 2), "utf8");

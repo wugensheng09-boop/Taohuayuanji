@@ -57,6 +57,7 @@ export interface SceneConfig {
   backgroundVideo?: string;
   videoStartLineId?: string;
   videoMode?: "loop" | "play_once_then_image";
+  videoBlockSceneExit?: boolean;
   videoFallbackImage?: string;
   ambientAudio?: string;
   ambientLayers?: {

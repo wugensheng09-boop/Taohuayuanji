@@ -1,4 +1,4 @@
-﻿# 桃花源记 全量配音台词（含主线与NPC2.2）
+# 桃花源记 全量配音台词（含主线与NPC2.2）
 
 ## A. 主线场景时间轴（24句，三轨）
 
@@ -16,8 +16,8 @@
 
 ### scene:cave_entry
 - scene.cave_entry.cave_l1 | [scene] | 桃林到了尽头，前方忽然现出一座山。
-- scene.cave_entry.cave_i1 | [inner] | 山间像有一道小口，我把船慢慢靠过去。
 - scene.cave_entry.cave_i2 | [quote] | 山有小口，仿佛若有光。
+- scene.cave_entry.cave_i1 | [inner] | 我弃舟上岸，慢慢走近。
 - scene.cave_entry.cave_l4 | [quote] | 初极狭，才通人。复行数十步，豁然开朗。
 
 ### scene:first_view
@@ -33,8 +33,7 @@
 - scene.village_talk.village_l4 | [inner] | 听完他们的话，我才知此地与外世隔绝已久。
 
 ### scene:lost_path
-- scene.lost_path.ending_l1 | [scene] | 离开桃源后，我沿路做下记号。
-- scene.lost_path.ending_i1 | [scene] | 回到武陵，同业渔人立刻围上来追问。
+- scene.lost_path.ending_l1 | [scene] | 离开桃源后，我沿路做下记号，想着日后重返此地。
 - scene.lost_path.ending_i2 | [quote] | 寻向所志，遂迷，不复得路。
 - scene.lost_path.ending_l4 | [inner] | 我这才懂得，有些地方能遇见，却未必能再抵达。
 

@@ -4,18 +4,26 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { QuizRubricResult } from "@/lib/ai";
+import { calculatePeerFinalScore, classifyPeerFreeReply, levelFromPeerScore } from "@/lib/peerFisherScoring.mjs";
+import type { RokidRuntimeMode } from "@/lib/rokid-device";
 import type { PeerChoiceId, PeerFisherFlowConfig, PostStoryNpcConfig } from "@/types/epilogue";
 import type { LessonBundle } from "@/types/lesson";
 import type { NpcConfig } from "@/types/npc";
 import type { SceneConfig } from "@/types/scene";
 import type { SessionSummary } from "@/types/session";
 
-type IntroState = "playing" | "blocked" | "ready";
+type IntroState = "playing" | "blocked" | "ready" | "transition";
 type LeakRisk = "low" | "mid" | "high";
 type NpcPhase = "aqiao" | "chief" | "peer_round1" | "peer_round2" | "peer_round3" | "peer_round4" | "peer_done";
 type TurnTone = "npc" | "user" | "narration";
 type TurnSide = "left" | "right";
 type VoiceGateStatus = "idle" | "pending" | "playing" | "done" | "missing";
+
+declare global {
+  interface Window {
+    __TAOHUAYUAN_ROKID_COMMAND__?: (action: string) => void;
+  }
+}
 
 type TtsPacket = {
   audioBase64: string;
@@ -24,6 +32,17 @@ type TtsPacket = {
   voiceProfile: string;
   playbackRate?: number;
 };
+
+type SpeechPacket =
+  | {
+      kind: "tts";
+      tts: TtsPacket;
+    }
+  | {
+      kind: "file";
+      src: string;
+      playbackRate?: number;
+    };
 
 type ChatRes = {
   reply?: string;
@@ -50,20 +69,35 @@ type Jump = {
   choices: [string, string];
 };
 
+type PendingPeerPrompt = {
+  nextPhase: "peer_round3" | "peer_round4";
+  text: string;
+  speechId: string;
+};
+
 type NpcSpeechTask = {
   turnId: string;
   fullText: string;
-  tts: TtsPacket;
+  speech: SpeechPacket;
+};
+
+type StoredLearningProgress = {
+  lessonId: string;
+  sessionId: string;
+  currentSceneId: string;
+  visitedScenes: string[];
+  updatedAt: string;
 };
 
 const INTRO_VIDEO = "/videos/taohuayuanji/封面视频.mp4";
+const ENTRY_TRANSITION_VIDEO = "/videos/taohuayuanji/entry-transition.mp4";
 const DEFAULT_BGM = 0.17;
 const DEFAULT_AMBIENT_PRIMARY = 0.24;
 const DEFAULT_AMBIENT_SECONDARY = 0.16;
 const VOICE_MIN_GAP_MS = 320;
 const VOICE_PENDING_TIMEOUT_MS = 4200;
 const NPC_SPEECH_FALLBACK_MS = 2200;
-const NPC_SPEECH_MAX_BLOCK_MS = 12000;
+const NPC_SPEECH_MAX_BLOCK_MS = 35000;
 const CHAT_REQUEST_TIMEOUT_MS = 20000;
 const TYPE_CHAR_BASE_MS = 62;
 const TYPE_PUNCT_DELAY_MS = 200;
@@ -71,18 +105,100 @@ const NARRATION_MIN_MS = 2800;
 const NARRATION_MAX_MS = 15000;
 const NARRATION_CHAR_MS = 240;
 const SCENE_JUMP_AUTO_MS = 6800;
-const PEER_FISHER_BACKGROUND = "/assets/taohuayuanji/同业渔民询问.png";
+const NPC_DIALOGUE_BACKGROUND = "/assets/taohuayuanji/redesign/learning-dialogue-river.png";
 const SPACE_SKIP_NO_API = process.env.NEXT_PUBLIC_SPACE_SKIP_NO_API === "1";
+
+const FINAL_REVIEW_COMMENTS: Record<"甲" | "乙" | "丙" | "待提升", string[]> = {
+  甲: [
+    "分寸清明，既见桃源，也守其静。",
+    "言辞有度，懂得桃源不可轻示。",
+  ],
+  乙: [
+    "已得大意，守密处还可更稳。",
+    "心近桃源，言语仍需少露锋芒。",
+  ],
+  丙: [
+    "方向已明，答话分寸尚待打磨。",
+    "能识其意，临机守口还需练习。",
+  ],
+  待提升: [
+    "此行初悟，切记奇境不可尽说。",
+    "问答稍急，下次先稳住心神。",
+  ],
+};
+
+function pickFinalReview(level: "甲" | "乙" | "丙" | "待提升", score: number): string {
+  const comments = FINAL_REVIEW_COMMENTS[level];
+  const pool =
+    level === "乙" && score >= 80
+      ? ["几近上乘，只差一分更沉稳。", ...comments]
+      : comments;
+  return pool[Math.floor(Math.random() * pool.length)] ?? comments[0];
+}
+
+function readStoredProgress(lessonId: string, sceneIds: Set<string>): StoredLearningProgress | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(`tyy:progress:${lessonId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredLearningProgress>;
+    if (
+      parsed.lessonId !== lessonId ||
+      typeof parsed.sessionId !== "string" ||
+      typeof parsed.currentSceneId !== "string" ||
+      !sceneIds.has(parsed.currentSceneId) ||
+      !Array.isArray(parsed.visitedScenes)
+    ) {
+      return null;
+    }
+    const visitedScenes = parsed.visitedScenes.filter((item): item is string => typeof item === "string" && sceneIds.has(item));
+    return {
+      lessonId,
+      sessionId: parsed.sessionId,
+      currentSceneId: parsed.currentSceneId,
+      visitedScenes: visitedScenes.length > 0 ? visitedScenes : [parsed.currentSceneId],
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+type SceneArtTone = "river" | "forest" | "cave" | "village" | "return" | "mist";
+
+const SCENE_ART_TONES: Record<string, SceneArtTone> = {
+  river: "river",
+  peach_forest: "forest",
+  cave_entry: "cave",
+  first_view: "village",
+  village_talk: "village",
+  lost_path: "return",
+  lost_path_epilogue: "mist",
+};
+
+function sceneArtTone(sceneId: string): SceneArtTone {
+  return SCENE_ART_TONES[sceneId] ?? "river";
+}
+
+function portraitStageTone(npcId: string | null): string {
+  if (npcId === "chief") return "npc-stage--chief";
+  if (npcId === "peer_fisher") return "npc-stage--peer";
+  return "npc-stage--aqiao";
+}
+
+function getInteractionBackdrop(npcId: string | null, fallback: string): string {
+  if (npcId === "aqiao") return NPC_DIALOGUE_BACKGROUND;
+  return fallback;
+}
+
+function matchPresetReply(npcId: string | null, phase: NpcPhase | null, message: string): string | null {
+  const normalized = message.trim();
+  if (!normalized) return null;
+  return getPresetReplies(npcId, phase).find((option) => option.trim() === normalized) ?? null;
+}
 
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(16).slice(2, 8)}_${Date.now().toString(36)}`;
-}
-
-function levelFromScore(score: number): "甲" | "乙" | "丙" | "待提升" {
-  if (score >= 85) return "甲";
-  if (score >= 70) return "乙";
-  if (score >= 55) return "丙";
-  return "待提升";
 }
 
 function estimateNarrationMs(text: string): number {
@@ -90,17 +206,24 @@ function estimateNarrationMs(text: string): number {
   return Math.max(NARRATION_MIN_MS, Math.min(NARRATION_MAX_MS, cleanLength * NARRATION_CHAR_MS));
 }
 
-function clampChars(input: string, maxChars: number): string {
-  const chars = Array.from(input.trim());
-  return chars.slice(0, Math.max(1, maxChars)).join("");
-}
-
 function normalizeShortReply(reply: string, maxChars: number, forbidQuestions: boolean): string {
   const noQuestion = forbidQuestions ? reply.replace(/[？?]/g, "").trim() : reply.trim();
-  const normalized = clampChars(noQuestion || "记下了。", maxChars);
-  return normalized.length > 0 ? normalized : "记下了。";
+  const normalized = noQuestion || "记下了。";
+  if (normalized.length <= 0) return "记下了。";
+
+  if (Array.from(normalized).length <= Math.max(1, maxChars)) {
+    return normalized;
+  }
+
+  const sentenceBreak = normalized.search(/[。！？；.!;](?!.*[。！？；.!;])/);
+  if (sentenceBreak >= 0) {
+    return normalized.slice(0, sentenceBreak + 1).trim();
+  }
+
+  return normalized;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function buildCharTimingsMs(text: string, syncWeights: number[] | undefined, totalMs: number): number[] {
   const chars = Array.from(text);
   if (chars.length === 0) return [];
@@ -165,20 +288,39 @@ function getPresetReplies(npcId: string | null, phase: NpcPhase | null): string[
     ];
   }
   if (npcId === "peer_fisher" && phase === "peer_round2") {
-    return [
-      "屋舍整齐，田园阡陌相通。",
-      "老少怡然，与外世久绝。",
-      "所见恍若梦境，难以尽述。",
-    ];
+    return [];
   }
   if (npcId === "peer_fisher" && phase === "peer_round3") {
-    return [
-      "临别叮嘱：不足为外人道。",
-      "他们只愿安居，不愿外人扰。",
-      "再三嘱咐我莫泄其踪。",
-    ];
+    return [];
   }
   return [];
+}
+
+function getFixedNpcReply(npcId: string | null, phase: NpcPhase | null, message: string): string | null {
+  const key = `${npcId ?? ""}:${phase ?? ""}:${message.trim()}`;
+  const replies: Record<string, string> = {
+    "aqiao:aqiao:我误入此地，并无恶意。": "既是误入，便先莫慌。你若无恶意，我带你去见族中长者。",
+    "aqiao:aqiao:我循溪而来，也不知到了哪里。": "原来你是顺溪而来，难怪会走到这里。此地少见外客，你且随我来。",
+    "aqiao:aqiao:我只是个捕鱼人。": "看你这身装束，倒真像个捕鱼人。只是此间僻静，我还是得先问个明白。",
+    "chief:chief:今世早非秦汉，朝代已多更替。": "竟已改朝换代至此，真如隔世。你这一言，叫我更觉人间沧桑。",
+    "chief:chief:村中和乐安宁，确似世外之境。": "你能看出此间宁和，老夫心下甚慰。此地人家，只求守这份安稳。",
+    "chief:chief:外界多有纷扰，此地难得清平。": "外头既多纷扰，越显此地清平可贵。只是世事无常，听来令人慨叹。",
+    "peer_fisher:peer_round2:屋舍整齐，田园阡陌相通。": "竟真有这等清宁地方。",
+    "peer_fisher:peer_round2:老少怡然，与外世久绝。": "听着倒像与尘世隔开了。",
+    "peer_fisher:peer_round2:所见恍若梦境，难以尽述。": "越听越玄，我都起了疑心。",
+    "peer_fisher:peer_round3:临别叮嘱：不足为外人道。": "原来他们早有顾虑。",
+    "peer_fisher:peer_round3:他们只愿安居，不愿外人扰。": "如此说来，确该替他们守住。",
+    "peer_fisher:peer_round3:再三嘱咐我莫泄其踪。": "这话我听明白了，不该乱传。",
+  };
+  return replies[key] ?? null;
+}
+
+function createLocalSpeech(id: string, folder: "npc" | "voice" = "npc", playbackRate = 1.0): SpeechPacket {
+  return {
+    kind: "file",
+    src: `/audio/taohuayuanji/${folder}/${id}.mp3`,
+    playbackRate,
+  };
 }
 
 type ChoiceCardCopy = { title: string; detail: string };
@@ -207,9 +349,20 @@ function toPeerChoiceCard(round: "round1" | "round4", optionId: PeerChoiceId, fa
   return { title: fallbackText, detail: "" };
 }
 
-export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
+export function LearningWorkspace({
+  bundle,
+  resume = false,
+  deviceMode = "web",
+  autostart = false,
+}: {
+  bundle: LessonBundle;
+  resume?: boolean;
+  deviceMode?: RokidRuntimeMode;
+  autostart?: boolean;
+}) {
   const lessonId = bundle.lesson.lessonId;
   const sceneMap = useMemo(() => Object.fromEntries(bundle.scenes.map((s) => [s.sceneId, s])), [bundle.scenes]);
+  const validSceneIds = useMemo(() => new Set(bundle.scenes.map((s) => s.sceneId)), [bundle.scenes]);
   const npcMap = useMemo(() => Object.fromEntries(bundle.npcs.map((n) => [n.npcId, n])), [bundle.npcs]);
   const epilogueNpcMap = useMemo(
     () => Object.fromEntries(bundle.epilogue.npcs.map((n) => [n.npcId, n])),
@@ -218,19 +371,31 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
   const [sessionId, setSessionId] = useState(() => {
     if (typeof window === "undefined") return uid("s");
-    const key = `tyy:session:${bundle.lesson.lessonId}`;
-    const existing = window.localStorage.getItem(key);
-    return existing && existing.trim().length > 0 ? existing : uid("s");
+    const progress = resume ? readStoredProgress(bundle.lesson.lessonId, new Set(bundle.scenes.map((s) => s.sceneId))) : null;
+    const nextSessionId = progress?.sessionId ?? uid("s");
+    window.localStorage.setItem(`tyy:session:${bundle.lesson.lessonId}`, nextSessionId);
+    return nextSessionId;
   });
 
-  const [introVisible, setIntroVisible] = useState(true);
-  const [introState, setIntroState] = useState<IntroState>("playing");
+  const shouldAutostart = deviceMode === "rokid" && autostart;
+  const [introVisible, setIntroVisible] = useState(!shouldAutostart);
+  const [introState, setIntroState] = useState<IntroState>(shouldAutostart ? "ready" : "playing");
   const [paused, setPaused] = useState(false);
-  const [sceneId, setSceneId] = useState(bundle.lesson.entrySceneId);
+  const [sceneId, setSceneId] = useState(() => {
+    const progress = resume ? readStoredProgress(bundle.lesson.lessonId, new Set(bundle.scenes.map((s) => s.sceneId))) : null;
+    return progress?.currentSceneId ?? bundle.lesson.entrySceneId;
+  });
   const [lineIdx, setLineIdx] = useState(0);
   const [typed, setTyped] = useState(0);
   const [jump, setJump] = useState<Jump | null>(null);
-  const [visited, setVisited] = useState<string[]>([bundle.lesson.entrySceneId]);
+  const [activeCheckpoint, setActiveCheckpoint] = useState<{ lineId: string; choices: string[] } | null>(null);
+  const [visited, setVisited] = useState<string[]>(() => {
+    const progress = resume ? readStoredProgress(bundle.lesson.lessonId, new Set(bundle.scenes.map((s) => s.sceneId))) : null;
+    const startSceneId = progress?.currentSceneId ?? bundle.lesson.entrySceneId;
+    return [...new Set([bundle.lesson.entrySceneId, ...(progress?.visitedScenes ?? []), startSceneId])].filter((item) =>
+      bundle.scenes.some((sceneItem) => sceneItem.sceneId === item),
+    );
+  });
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [npcSpeechQueue, setNpcSpeechQueue] = useState<NpcSpeechTask[]>([]);
@@ -246,8 +411,10 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   const [activePhase, setActivePhase] = useState<NpcPhase | null>(null);
   const [canContinue, setCanContinue] = useState(false);
   const [leakScore, setLeakScore] = useState(0);
+  const [finalScore, setFinalScore] = useState<number | null>(null);
   const [finalLevel, setFinalLevel] = useState<"甲" | "乙" | "丙" | "待提升" | null>(null);
-  const [finalNarrative, setFinalNarrative] = useState("");
+  const [finalReview, setFinalReview] = useState("");
+  const [peerNextPrompt, setPeerNextPrompt] = useState<PendingPeerPrompt | null>(null);
 
   const [videoEndedByScene, setVideoEndedByScene] = useState<Record<string, boolean>>({});
   const [voiceActive, setVoiceActive] = useState(false);
@@ -261,6 +428,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   const introVideoRef = useRef<HTMLVideoElement | null>(null);
+  const introStartButtonRef = useRef<HTMLButtonElement | null>(null);
   const sceneVideoRef = useRef<HTMLVideoElement | null>(null);
   const jumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openedInteractionsRef = useRef<Set<string>>(new Set());
@@ -284,39 +452,61 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   const lineText = line ? line.text.slice(0, typed) : "";
 
   const lineBackground = line?.id ? scene.lineBackgroundOverrides?.[line.id] : undefined;
-  const sceneVideoEnded = videoEndedByScene[sceneId] ?? false;
+  const sceneVideoStateKey = scene.backgroundVideo ?? sceneId;
+  const sceneVideoEnded = videoEndedByScene[sceneVideoStateKey] ?? false;
   const backdrop =
     sceneVideoEnded && scene.videoFallbackImage
       ? scene.videoFallbackImage
       : lineBackground ?? scene.backgroundImage;
+  const interactionActive = Boolean(activePhase && activeNpcId);
 
   const videoStartIdx = scene.videoStartLineId
     ? Math.max(0, scene.timeline.findIndex((item) => item.id === scene.videoStartLineId))
     : 0;
   const showSceneVideo =
     !introVisible &&
+    !interactionActive &&
     Boolean(scene.backgroundVideo) &&
     lineIdx >= videoStartIdx &&
     (scene.videoMode !== "play_once_then_image" || !sceneVideoEnded);
   const oneShotVideoPlaying = showSceneVideo && scene.videoMode === "play_once_then_image";
+  const sceneOneShotWaiting = oneShotVideoPlaying && !sceneVideoEnded;
+  const lineExitsScene = Boolean(line && lineIdx + 1 >= scene.timeline.length);
+  const sceneExitWaiting = sceneOneShotWaiting && lineExitsScene && scene.videoBlockSceneExit !== false;
+  const interactionWaiting =
+    sceneOneShotWaiting && Boolean(line && (line.lineType === "checkpoint" || line.interactionMode === "npc2"));
+  const spaceBlockedBySceneVideo = sceneExitWaiting || interactionWaiting;
 
-  const interactionActive = Boolean(activePhase && activeNpcId);
-  const storyAuto = !introVisible && !paused && !jump && !interactionActive && !done;
+  const storyAuto = !introVisible && !paused && !jump && !activeCheckpoint && !interactionActive && !done;
   const currentSpeaker = lineSpeaker(line, npcMap);
   const currentLineKey = line ? `${sceneId}:${line.id}` : "";
 
   const peerFlow: PeerFisherFlowConfig = bundle.epilogue.peerFisherFlow;
   const activeNpc: PostStoryNpcConfig | null = activeNpcId ? epilogueNpcMap[activeNpcId] ?? null : null;
   const isPeerFisherInteraction = activeNpc?.npcId === "peer_fisher";
-  const displayBackdrop = interactionActive && isPeerFisherInteraction ? PEER_FISHER_BACKGROUND : backdrop;
+  const artTone = sceneArtTone(sceneId);
+  const displayBackdrop = interactionActive ? getInteractionBackdrop(activeNpcId, backdrop) : backdrop;
+  const displayArtTone = interactionActive && activeNpcId === "aqiao" ? "river" : artTone;
+  const portraitTone = portraitStageTone(activeNpcId);
+  const currentSpeechTask =
+    (activeSpeechTurnId ? npcSpeechQueue.find((task) => task.turnId === activeSpeechTurnId) : undefined) ??
+    npcSpeechQueue[0] ??
+    null;
 
   const addTurn = useCallback(
-    (speaker: string, text: string, tone: TurnTone, portraitImage?: string, side?: TurnSide, tts?: TtsPacket | null) => {
+    (
+      speaker: string,
+      text: string,
+      tone: TurnTone,
+      portraitImage?: string,
+      side?: TurnSide,
+      speech?: SpeechPacket | null,
+    ) => {
       const turnSide = side ?? (tone === "user" ? "right" : "left");
       const turnId = uid("t");
-      if (tone === "npc" && tts?.audioBase64) {
-        setTurns((prev) => [...prev, { id: turnId, speaker, text: "", tone, side: turnSide, portraitImage }]);
-        setNpcSpeechQueue((prev) => [...prev, { turnId, fullText: text, tts }]);
+      if (tone !== "user" && speech) {
+        setTurns((prev) => [...prev, { id: turnId, speaker, text, tone, side: turnSide, portraitImage }]);
+        setNpcSpeechQueue((prev) => [...prev, { turnId, fullText: text, speech }]);
         return;
       }
       setTurns((prev) => [...prev, { id: turnId, speaker, text, tone, side: turnSide, portraitImage }]);
@@ -328,7 +518,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     return npc?.dialogSide ?? "left";
   }, []);
 
-  const clearNpcState = useCallback(() => {
+  const clearNpcState = useCallback((options?: { preservePeerResult?: boolean }) => {
     setTurns([]);
     setNpcSpeechQueue([]);
     setActiveSpeechTurnId(null);
@@ -344,14 +534,18 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     setSelectedRound1Option(null);
     setSelectedRound4Option(null);
     setSelectedPresetReply(null);
+    setPeerNextPrompt(null);
     setPendingUserMessage("");
     setNpcBusy(false);
     setActiveNpcId(null);
     setActivePhase(null);
     setCanContinue(false);
-    setLeakScore(0);
-    setFinalLevel(null);
-    setFinalNarrative("");
+    if (!options?.preservePeerResult) {
+      setLeakScore(0);
+      setFinalScore(null);
+      setFinalLevel(null);
+      setFinalReview("");
+    }
   }, []);
 
   const fadeTo = useCallback((channel: string, audio: HTMLAudioElement | null, target: number, durationMs = 420) => {
@@ -453,7 +647,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
   const tryResolveVoiceSrc = useCallback(async (voiceId: string): Promise<string | null> => {
     const base = `/audio/taohuayuanji/voice/${voiceId}`;
-    const candidates = [`${base}.wav`, `${base}.WAV`, `${base}.mp3`, `${base}.MP3`];
+    const candidates = [`${base}.mp3`, `${base}.MP3`, `${base}.wav`, `${base}.WAV`];
     for (const src of candidates) {
       try {
         const r = await fetch(src, { method: "HEAD", cache: "no-store" });
@@ -502,11 +696,10 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   );
 
   useEffect(() => {
-    if (activeSpeechTurnId || npcSpeechQueue.length === 0) return;
+    if (!currentSpeechTask) return;
 
     const audio = npcSpeechRef.current;
-    const task = npcSpeechQueue[0];
-    if (!task) return;
+    const task = currentSpeechTask;
 
     if (!audio) {
       setTurns((prev) => prev.map((turn) => (turn.id === task.turnId ? { ...turn, text: task.fullText } : turn)));
@@ -518,8 +711,6 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     setVoiceActive(true);
 
     let cancelled = false;
-    let lastCharCount = -1;
-    let charTimings: number[] = [];
     let playbackStarted = false;
     const fallbackRevealTimer =
       window.setTimeout(() => {
@@ -529,13 +720,6 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       }, NPC_SPEECH_FALLBACK_MS);
     let watchdogTimer: number | undefined;
 
-    const updateTurnText = (charCount: number) => {
-      if (charCount === lastCharCount) return;
-      lastCharCount = charCount;
-      const nextText = Array.from(task.fullText).slice(0, charCount).join("");
-      setTurns((prev) => prev.map((turn) => (turn.id === task.turnId ? { ...turn, text: nextText } : turn)));
-    };
-
     const finalize = () => {
       if (cancelled) return;
       if (fallbackRevealTimer) {
@@ -544,51 +728,49 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       if (watchdogTimer) {
         window.clearTimeout(watchdogTimer);
       }
-      updateTurnText(Array.from(task.fullText).length);
       setNpcSpeechQueue((prev) => prev.slice(1));
       setActiveSpeechTurnId(null);
       setVoiceActive(false);
     };
 
     const onLoadedMetadata = () => {
+      const estimatedDurationMs = estimateNarrationMs(task.fullText);
       const rawDurationMs =
         Number.isFinite(audio.duration) && audio.duration > 0
           ? Math.round(audio.duration * 1000)
-          : estimateNarrationMs(task.fullText);
-      const maxReasonableMs = Math.max(9000, estimateNarrationMs(task.fullText) * 2);
+          : estimatedDurationMs;
       const durationMs =
-        rawDurationMs > maxReasonableMs || rawDurationMs < 280 ? estimateNarrationMs(task.fullText) : rawDurationMs;
-      charTimings = buildCharTimingsMs(task.fullText, task.tts.syncWeights, durationMs);
+        rawDurationMs < 280
+          ? estimatedDurationMs
+          : task.speech.kind === "file"
+            ? rawDurationMs
+            : rawDurationMs > Math.max(9000, estimatedDurationMs * 2)
+              ? estimatedDurationMs
+              : rawDurationMs;
       if (watchdogTimer) {
         window.clearTimeout(watchdogTimer);
       }
       watchdogTimer = window.setTimeout(finalize, Math.min(NPC_SPEECH_MAX_BLOCK_MS, durationMs + 1800));
     };
 
-    const onTimeUpdate = () => {
-      if (cancelled || charTimings.length === 0) return;
+    const onPlay = () => {
       playbackStarted = true;
-      const nowMs = audio.currentTime * 1000;
-      let charCount = charTimings.findIndex((ms) => ms > nowMs);
-      if (charCount < 0) charCount = charTimings.length;
-      updateTurnText(charCount);
     };
-
     const onEnded = () => finalize();
     const onError = () => finalize();
-    const onStalled = () => finalize();
 
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
-    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("play", onPlay);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
-    audio.addEventListener("stalled", onStalled);
-    audio.addEventListener("abort", onStalled);
-    audio.addEventListener("suspend", onStalled);
 
-    audio.src = `data:${task.tts.mimeType};base64,${task.tts.audioBase64}`;
+    audio.src =
+      task.speech.kind === "tts"
+        ? `data:${task.speech.tts.mimeType};base64,${task.speech.tts.audioBase64}`
+        : task.speech.src;
     audio.currentTime = 0;
-    audio.playbackRate = task.tts.playbackRate ?? 0.9;
+    audio.playbackRate =
+      task.speech.kind === "tts" ? task.speech.tts.playbackRate ?? 1 : task.speech.playbackRate ?? 1;
     audio.load();
     watchdogTimer = window.setTimeout(finalize, NPC_SPEECH_MAX_BLOCK_MS);
     void audio.play().catch(() => finalize());
@@ -603,14 +785,11 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       }
       audio.pause();
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("play", onPlay);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
-      audio.removeEventListener("stalled", onStalled);
-      audio.removeEventListener("abort", onStalled);
-      audio.removeEventListener("suspend", onStalled);
     };
-  }, [activeSpeechTurnId, npcSpeechQueue]);
+  }, [currentSpeechTask]);
 
   const advance = useCallback(() => {
     if (!line) return;
@@ -648,6 +827,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
   const moveScene = useCallback((nextSceneId: string) => {
     setJump(null);
+    setActiveCheckpoint(null);
     setSceneId(nextSceneId);
     setLineIdx(0);
     setTyped(0);
@@ -681,9 +861,20 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     setSummary(null);
     setSummaryLoading(false);
     openedInteractionsRef.current.clear();
+    setActiveCheckpoint(null);
     clearNpcState();
     stopVoice();
   }, [bundle.lesson.entrySceneId, clearNpcState, lessonId, stopVoice]);
+
+  const skipIntro = useCallback(() => {
+    const node = introVideoRef.current;
+    if (node) {
+      node.pause();
+      node.currentTime = 0;
+    }
+    setIntroState("ready");
+    setIntroVisible(false);
+  }, []);
 
   const goHome = useCallback(() => {
     if (typeof window !== "undefined") {
@@ -692,14 +883,24 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   }, []);
 
   const closeNpcAndContinue = useCallback(() => {
-    clearNpcState();
+    const shouldJumpToNextScene = activePhase === "peer_done" && Boolean(scene.nextSceneId);
+    clearNpcState({ preservePeerResult: activePhase === "peer_done" });
+    if (shouldJumpToNextScene && scene.nextSceneId) {
+      setTimeout(() => moveScene(scene.nextSceneId!), 80);
+      return;
+    }
     setTimeout(() => advance(), 80);
-  }, [advance, clearNpcState]);
+  }, [activePhase, advance, clearNpcState, moveScene, scene.nextSceneId]);
 
   const skipInteractionBySpace = useCallback(() => {
     clearNpcState();
     setTimeout(() => advance(), 40);
   }, [advance, clearNpcState]);
+
+  const submitCheckpointChoice = useCallback(() => {
+    setActiveCheckpoint(null);
+    setTimeout(() => advance(), 80);
+  }, [advance]);
 
   const openNpcInteraction = useCallback(
     (interactionKey: string) => {
@@ -717,35 +918,67 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       setSelectedRound1Option(null);
       setSelectedRound4Option(null);
       setSelectedPresetReply(null);
+      setPeerNextPrompt(null);
+      setTurns([]);
+      setNpcSpeechQueue([]);
+      setActiveSpeechTurnId(null);
+      setVoiceActive(false);
+      if (mapped.phase === "peer_round1") {
+        setLeakScore(0);
+        setFinalScore(null);
+        setFinalLevel(null);
+        setFinalReview("");
+      }
 
-      setTurns(() => {
-        const npcSide = getNpcSide(npc);
-        if (mapped.phase === "peer_round1") {
-          return peerFlow.round1.openerLines.map((text) => ({
-            id: uid("t"),
-            speaker: npc.name,
-            text,
-            tone: "npc",
-            side: npcSide,
-            portraitImage: npc.portraitImage,
-          }));
-        }
-        return [
-          {
-            id: uid("t"),
-            speaker: npc.name,
-            text: npc.openingLine,
-            tone: "npc",
-            side: npcSide,
-            portraitImage: npc.portraitImage,
-          },
-        ];
-      });
+      const speech = npcSpeechRef.current;
+      if (speech) {
+        speech.pause();
+        speech.currentTime = 0;
+        speech.removeAttribute("src");
+        speech.load();
+      }
+
+      const npcSide = getNpcSide(npc);
+      if (mapped.phase === "peer_round1") {
+        addTurn(
+          npc.name,
+          peerFlow.round1.openerLines[0] ?? "",
+          "npc",
+          npc.portraitImage,
+          npcSide,
+          createLocalSpeech("npc_peer_round1_opener_1"),
+        );
+        addTurn(
+          npc.name,
+          peerFlow.round1.openerLines[1] ?? "",
+          "npc",
+          npc.portraitImage,
+          npcSide,
+          createLocalSpeech("npc_peer_round1_opener_2"),
+        );
+        return;
+      }
+
+      const openingAudioId =
+        mapped.phase === "aqiao"
+          ? "npc_aqiao_opening"
+          : mapped.phase === "chief"
+            ? "npc_chief_opening"
+            : null;
+
+      addTurn(
+        npc.name,
+        npc.openingLine,
+        "npc",
+        npc.portraitImage,
+        npcSide,
+        openingAudioId ? createLocalSpeech(openingAudioId) : null,
+      );
     },
-    [epilogueNpcMap, getNpcSide, peerFlow.round1.openerLines],
+    [addTurn, epilogueNpcMap, getNpcSide, peerFlow.round1.openerLines],
   );
 
-  const submitRoleplay = useCallback(async (presetMessage?: string) => {
+  const submitRoleplay = async (presetMessage?: string) => {
     if (!activeNpc || !activePhase || (activePhase !== "aqiao" && activePhase !== "chief")) return;
     const message = (presetMessage ?? npcInput).trim();
     if (!message || npcBusy) return;
@@ -759,17 +992,29 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     setManualInputOpen(false);
 
     try {
-      const data = await callChat({
-        sessionId,
-        lessonId,
-        sceneId,
-        npcId: activeNpc.npcId,
-        mode: "roleplay_chat",
-        message,
-        lineId: line?.id,
-      });
+      const fixedReply = presetMessage ? getFixedNpcReply(activeNpc.npcId, activePhase, message) : null;
+      if (fixedReply) {
+        addTurn(activeNpc.name, fixedReply, "npc", activeNpc.portraitImage, getNpcSide(activeNpc));
+      } else {
+        const data = await callChat({
+          sessionId,
+          lessonId,
+          sceneId,
+          npcId: activeNpc.npcId,
+          mode: "roleplay_chat",
+          message,
+          lineId: line?.id,
+        });
 
-      addTurn(activeNpc.name, data.reply ?? "我听见了。", "npc", activeNpc.portraitImage, getNpcSide(activeNpc), data.tts);
+        addTurn(
+          activeNpc.name,
+          data.reply ?? "我听见了。",
+          "npc",
+          activeNpc.portraitImage,
+          getNpcSide(activeNpc),
+          data.tts ? { kind: "tts", tts: data.tts } : undefined,
+        );
+      }
       if (!canContinue) {
         if (activePhase === "aqiao") {
           addTurn("旁白", "阿樵神色稍缓，似乎愿意再听你多说几句。", "narration");
@@ -785,33 +1030,46 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       setSelectedPresetReply(null);
       setNpcBusy(false);
     }
-  }, [activeNpc, activePhase, addTurn, callChat, canContinue, getNpcSide, lessonId, line?.id, npcBusy, npcInput, sceneId, sessionId]);
+  };
 
-  const submitPeerRound1Choice = useCallback(
-    (choiceId: PeerChoiceId) => {
-      const npc = epilogueNpcMap.peer_fisher;
-      if (!npc || activePhase !== "peer_round1" || npcBusy) return;
-      const option = peerFlow.round1.options.find((item) => item.id === choiceId);
-      if (!option) return;
+  const submitPeerRound1FreeReply = useCallback(() => {
+    const npc = epilogueNpcMap.peer_fisher;
+    if (!npc || activePhase !== "peer_round1" || npcBusy) return;
+    const message = npcInput.trim();
+    if (!message) return;
 
-      addTurn("我", `${choiceId}. ${option.text}`, "user");
-      const nextScore = leakScore + option.leakScore;
-      setLeakScore(nextScore);
-      setCanContinue(false);
-      setManualInputOpen(false);
-      setSelectedRound1Option(null);
+    const classification = classifyPeerFreeReply(message, "round1");
+    const choiceId = classification.choiceId as PeerChoiceId;
 
-      addTurn(npc.name, peerFlow.round2.prompts[choiceId], "npc", npc.portraitImage, getNpcSide(npc));
-      setActivePhase("peer_round2");
-    },
-    [activePhase, addTurn, epilogueNpcMap.peer_fisher, getNpcSide, leakScore, npcBusy, peerFlow.round1.options, peerFlow.round2.prompts],
-  );
+    setNpcBusy(true);
+    setPendingUserMessage(message);
+    addTurn("我", message, "user");
+    const nextScore = leakScore + classification.leakScore;
+    setLeakScore(nextScore);
+    setNpcInput("");
+    setCanContinue(false);
+    setManualInputOpen(false);
+    setSelectedRound1Option(null);
 
-  const submitPeerOpenRound = useCallback(async (presetMessage?: string) => {
+    addTurn(
+      npc.name,
+      peerFlow.round2.prompts[choiceId],
+      "npc",
+      npc.portraitImage,
+      getNpcSide(npc),
+      createLocalSpeech(`npc_peer_round2_prompt_${choiceId}`),
+    );
+    setActivePhase("peer_round2");
+    setPendingUserMessage("");
+    setNpcBusy(false);
+  }, [activePhase, addTurn, epilogueNpcMap.peer_fisher, getNpcSide, leakScore, npcBusy, npcInput, peerFlow.round2.prompts]);
+
+  const submitPeerOpenRound = async (presetMessage?: string) => {
     const npc = epilogueNpcMap.peer_fisher;
     if (!npc || (activePhase !== "peer_round2" && activePhase !== "peer_round3") || npcBusy) return;
     const message = (presetMessage ?? npcInput).trim();
     if (!message) return;
+    const currentPhase = activePhase;
     const latestNpcPrompt = [...turns].reverse().find((item) => item.tone === "npc")?.text;
 
     setNpcBusy(true);
@@ -821,146 +1079,178 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     setNpcInput("");
     setManualInputOpen(false);
 
-    try {
-      const roleplay = await callChat({
-        sessionId,
-        lessonId,
-        sceneId,
-        npcId: npc.npcId,
-        mode: "roleplay_chat",
-        message,
-        question: latestNpcPrompt,
-        lineId: line?.id,
-      });
+    const leakEvalPromise = evaluateLeakSilently(message);
 
-      const shortReply = normalizeShortReply(
-        roleplay.reply ?? "我记下了。",
-        peerFlow.replyConstraints.maxChars,
-        peerFlow.replyConstraints.forbidQuestions,
-      );
-      const ttsForShortReply = roleplay.reply?.trim() === shortReply.trim() ? roleplay.tts : null;
-      addTurn(npc.name, shortReply, "npc", npc.portraitImage, getNpcSide(npc), ttsForShortReply);
+    try {
+      const fixedReply = presetMessage ? getFixedNpcReply(npc.npcId, activePhase, message) : null;
+      if (fixedReply) {
+        addTurn(npc.name, fixedReply, "npc", npc.portraitImage, getNpcSide(npc));
+      } else {
+        const roleplay = await callChat({
+          sessionId,
+          lessonId,
+          sceneId,
+          npcId: npc.npcId,
+          mode: "roleplay_chat",
+          message,
+          question: latestNpcPrompt,
+          lineId: line?.id,
+        });
+
+        const shortReply = normalizeShortReply(
+          roleplay.reply ?? "我记下了。",
+          peerFlow.replyConstraints.maxChars,
+          peerFlow.replyConstraints.forbidQuestions,
+        );
+        addTurn(
+          npc.name, 
+          shortReply, 
+          "npc", 
+          npc.portraitImage, 
+          getNpcSide(npc),
+          roleplay.tts ? { kind: "tts", tts: roleplay.tts } : undefined,
+        );
+      }
     } catch {
       addTurn(npc.name, "我记下了。", "npc", npc.portraitImage, getNpcSide(npc));
     }
 
-    const leakEvalScore = await evaluateLeakSilently(message);
+    setPeerNextPrompt(
+      currentPhase === "peer_round2"
+        ? {
+            nextPhase: "peer_round3",
+            text: peerFlow.round3.question,
+            speechId: "npc_peer_round3_question",
+          }
+        : {
+            nextPhase: "peer_round4",
+            text: peerFlow.round4.question,
+            speechId: "npc_peer_round4_question",
+          },
+    );
+
+    const leakEvalScore = await leakEvalPromise;
     const nextScore = leakScore + leakEvalScore;
     setLeakScore(nextScore);
 
-    if (activePhase === "peer_round2") {
-      addTurn(npc.name, peerFlow.round3.question, "npc", npc.portraitImage, getNpcSide(npc));
-      setActivePhase("peer_round3");
-    } else {
-      addTurn(npc.name, peerFlow.round4.question, "npc", npc.portraitImage, getNpcSide(npc));
-      setActivePhase("peer_round4");
-    }
     setPendingUserMessage("");
     setSelectedPresetReply(null);
+    setNpcBusy(false);
+  };
+
+  const continuePeerQuestion = useCallback(() => {
+    const npc = epilogueNpcMap.peer_fisher;
+    if (!npc || !peerNextPrompt || npcBusy) return;
+
+    addTurn(
+      npc.name,
+      peerNextPrompt.text,
+      "npc",
+      npc.portraitImage,
+      getNpcSide(npc),
+      createLocalSpeech(peerNextPrompt.speechId),
+    );
+    setActivePhase(peerNextPrompt.nextPhase);
+    setPeerNextPrompt(null);
+    setManualInputOpen(true);
+    setNpcInput("");
+    setSelectedPresetReply(null);
+  }, [addTurn, epilogueNpcMap.peer_fisher, getNpcSide, npcBusy, peerNextPrompt]);
+
+  const submitPeerRound4FreeReply = useCallback(() => {
+    const npc = epilogueNpcMap.peer_fisher;
+    if (!npc || activePhase !== "peer_round4" || npcBusy) return;
+    const message = npcInput.trim();
+    if (!message) return;
+
+    const classification = classifyPeerFreeReply(message, "round4");
+    const choiceId = classification.choiceId as PeerChoiceId;
+
+    setNpcBusy(true);
+    setPendingUserMessage(message);
+    addTurn("我", message, "user");
+
+    const nextScore = leakScore + classification.leakScore;
+    setLeakScore(nextScore);
+
+    const endingText = peerFlow.round5.endings[choiceId];
+
+    const rawScore = calculatePeerFinalScore(nextScore, choiceId);
+    const level = levelFromPeerScore(rawScore) as "甲" | "乙" | "丙" | "待提升";
+    setFinalScore(rawScore);
+    setFinalLevel(level);
+    setFinalReview(pickFinalReview(level, rawScore));
+    setCanContinue(true);
+    setActivePhase("peer_done");
+    setManualInputOpen(false);
+    setSelectedRound4Option(null);
+    setNpcInput("");
+
+    addTurn(npc.name, `我听完了，给你个评等：${level}（${rawScore}分）。`, "npc", npc.portraitImage, getNpcSide(npc));
+    const extra = peerFlow.round5.finalFeedbackByLevel?.[level];
+    if (extra) {
+      addTurn(npc.name, extra, "npc", npc.portraitImage, getNpcSide(npc));
+    }
+    addTurn("旁白", endingText, "narration", undefined, "left", createLocalSpeech(`npc_peer_round5_ending_${choiceId}`));
+    setPendingUserMessage("");
     setNpcBusy(false);
   }, [
     activePhase,
     addTurn,
-    callChat,
     epilogueNpcMap.peer_fisher,
-    evaluateLeakSilently,
     getNpcSide,
     leakScore,
-    lessonId,
-    line?.id,
     npcBusy,
     npcInput,
-    peerFlow.replyConstraints.forbidQuestions,
-    peerFlow.replyConstraints.maxChars,
-    peerFlow.round3.question,
-    peerFlow.round4.question,
-    sceneId,
-    sessionId,
-    turns,
+    peerFlow.round5.endings,
+    peerFlow.round5.finalFeedbackByLevel,
   ]);
 
-  const submitPeerRound4Choice = useCallback(
-    (choiceId: PeerChoiceId) => {
-      const npc = epilogueNpcMap.peer_fisher;
-      if (!npc || activePhase !== "peer_round4" || npcBusy) return;
-      const option = peerFlow.round4.options.find((item) => item.id === choiceId);
-      if (!option) return;
+  const selectRound1Choice = (choiceId: PeerChoiceId) => {
+    if (npcBusy || selectedRound1Option) return;
+    const option = peerFlow.round1.options.find((item) => item.id === choiceId);
+    if (!option) return;
+    setSelectedRound1Option(choiceId);
+    setNpcInput(option.text);
+    setManualInputOpen(true);
+    window.setTimeout(() => {
+      setSelectedRound1Option((curr) => (curr === choiceId ? null : curr));
+    }, 900);
+  };
 
-      addTurn("我", `${choiceId}. ${option.text}`, "user");
+  const selectRound4Choice = (choiceId: PeerChoiceId) => {
+    if (npcBusy || selectedRound4Option) return;
+    const option = peerFlow.round4.options.find((item) => item.id === choiceId);
+    if (!option) return;
+    setSelectedRound4Option(choiceId);
+    setNpcInput(option.text);
+    setManualInputOpen(true);
+    window.setTimeout(() => {
+      setSelectedRound4Option((curr) => (curr === choiceId ? null : curr));
+    }, 900);
+  };
 
-      const nextScore = leakScore + option.leakScore;
-      setLeakScore(nextScore);
-
-      const endingText = peerFlow.round5.endings[choiceId];
-      setFinalNarrative(endingText);
-
-      const finalBonus = choiceId === "A" ? 10 : choiceId === "B" ? 2 : -14;
-      const rawScore = Math.max(0, Math.min(100, 82 - Math.round(nextScore * 32) + finalBonus));
-      const level = levelFromScore(rawScore);
-      setFinalLevel(level);
-      setCanContinue(true);
-      setActivePhase("peer_done");
-      setManualInputOpen(false);
-      setSelectedRound4Option(null);
-
-      addTurn(npc.name, `我听完了，给你个评等：${level}。`, "npc", npc.portraitImage, getNpcSide(npc));
-      const extra = peerFlow.round5.finalFeedbackByLevel?.[level];
-      if (extra) {
-        addTurn(npc.name, extra, "npc", npc.portraitImage, getNpcSide(npc));
-      }
-      addTurn("旁白", endingText, "narration");
-    },
-    [activePhase, addTurn, epilogueNpcMap.peer_fisher, getNpcSide, leakScore, npcBusy, peerFlow.round4.options, peerFlow.round5.endings, peerFlow.round5.finalFeedbackByLevel],
-  );
-
-  const selectRound1Choice = useCallback(
-    (choiceId: PeerChoiceId) => {
-      if (npcBusy || selectedRound1Option) return;
-      setSelectedRound1Option(choiceId);
-      window.setTimeout(() => submitPeerRound1Choice(choiceId), 110);
-      window.setTimeout(() => {
-        setSelectedRound1Option((curr) => (curr === choiceId ? null : curr));
-      }, 1400);
-    },
-    [npcBusy, selectedRound1Option, submitPeerRound1Choice],
-  );
-
-  const selectRound4Choice = useCallback(
-    (choiceId: PeerChoiceId) => {
-      if (npcBusy || selectedRound4Option) return;
-      setSelectedRound4Option(choiceId);
-      window.setTimeout(() => submitPeerRound4Choice(choiceId), 110);
-      window.setTimeout(() => {
-        setSelectedRound4Option((curr) => (curr === choiceId ? null : curr));
-      }, 1400);
-    },
-    [npcBusy, selectedRound4Option, submitPeerRound4Choice],
-  );
-
-  const selectPresetReply = useCallback(
-    (option: string) => {
-      if (npcBusy || selectedPresetReply) return;
-      setSelectedPresetReply(option);
-      window.setTimeout(() => {
-        if (activePhase === "aqiao" || activePhase === "chief") {
-          void submitRoleplay(option);
-        } else if (activePhase === "peer_round2" || activePhase === "peer_round3") {
-          void submitPeerOpenRound(option);
-        }
-      }, 90);
-      window.setTimeout(() => {
-        setSelectedPresetReply((curr) => (curr === option ? null : curr));
-      }, 1400);
-    },
-    [activePhase, npcBusy, selectedPresetReply, submitPeerOpenRound, submitRoleplay],
-  );
+  const selectPresetReply = (option: string) => {
+    if (npcBusy) return;
+    setSelectedPresetReply(option);
+    setNpcInput(option);
+    setManualInputOpen(true);
+  };
 
   useEffect(() => {
-    const storageKey = `tyy:session:${lessonId}`;
-    if (!window.localStorage.getItem(storageKey)) {
-      window.localStorage.setItem(storageKey, sessionId);
-    }
-  }, [lessonId, sessionId]);
+    const visitedScenes = [...new Set(visited.filter((item) => validSceneIds.has(item)))];
+    window.localStorage.setItem(`tyy:session:${lessonId}`, sessionId);
+    window.localStorage.setItem(
+      `tyy:progress:${lessonId}`,
+      JSON.stringify({
+        lessonId,
+        sessionId,
+        currentSceneId: validSceneIds.has(sceneId) ? sceneId : bundle.lesson.entrySceneId,
+        visitedScenes: visitedScenes.length > 0 ? visitedScenes : [bundle.lesson.entrySceneId],
+        updatedAt: new Date().toISOString(),
+      } satisfies StoredLearningProgress),
+    );
+  }, [bundle.lesson.entrySceneId, lessonId, sceneId, sessionId, validSceneIds, visited]);
 
   useEffect(() => {
     fetch("/api/session/init", {
@@ -972,17 +1262,32 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
   useEffect(() => {
     if (!introVisible) return;
+    if (introState !== "playing" && introState !== "transition") return;
     const node = introVideoRef.current;
     if (!node) return;
 
     node.currentTime = 0;
-    node.muted = false;
-    node.volume = 1;
+    const transitionMuted = introState === "transition";
+    node.muted = transitionMuted;
+    node.volume = transitionMuted ? 0 : 1;
     const p = node.play();
     if (p && typeof p.catch === "function") {
-      p.catch(() => setIntroState("blocked"));
+      p.catch(() => {
+        if (introState === "transition") {
+          setIntroVisible(false);
+          return;
+        }
+        setIntroState("blocked");
+      });
     }
-  }, [introVisible]);
+  }, [introState, introVisible]);
+
+  useEffect(() => {
+    if (!introVisible) return;
+    if (introState === "playing" || introState === "transition") return;
+    const timer = window.setTimeout(() => introStartButtonRef.current?.focus(), 30);
+    return () => window.clearTimeout(timer);
+  }, [introState, introVisible]);
 
   useEffect(() => {
     if (!line || !storyAuto || !typing) return;
@@ -995,7 +1300,8 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
   useEffect(() => {
     if (!line || !storyAuto || typing) return;
-    if (line.interactionMode === "npc2") return;
+    if (sceneExitWaiting) return;
+    if (line.interactionMode === "npc2" || line.lineType === "checkpoint") return;
 
     if (lineGateKey !== currentLineKey) return;
 
@@ -1018,6 +1324,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     lineFallbackReadyAt,
     lineGateKey,
     lineGateReadyAt,
+    sceneExitWaiting,
     storyAuto,
     typing,
     voiceGateStatus,
@@ -1025,6 +1332,47 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
   useEffect(() => {
     if (!line || !storyAuto || typing) return;
+    if (sceneOneShotWaiting) return;
+    if (line.lineType !== "checkpoint") return;
+
+    const key = `${scene.sceneId}:${line.id}`;
+    if (openedInteractionsRef.current.has(key)) return;
+    if (lineGateKey !== currentLineKey) return;
+
+    const now = Date.now();
+    let fireAt: number | null = null;
+    if (voiceGateStatus === "done") {
+      fireAt = lineGateReadyAt;
+    } else if (voiceGateStatus === "missing" || voiceGateStatus === "idle") {
+      fireAt = Math.max(lineGateReadyAt, lineFallbackReadyAt);
+    }
+    if (fireAt === null) return;
+
+    const timer = setTimeout(() => {
+      if (openedInteractionsRef.current.has(key)) return;
+      openedInteractionsRef.current.add(key);
+      setActiveCheckpoint({
+        lineId: line.id,
+        choices: line.checkpointChoices?.filter(Boolean).slice(0, 2) ?? ["继续前进"],
+      });
+    }, Math.max(VOICE_MIN_GAP_MS, fireAt - now + VOICE_MIN_GAP_MS));
+    return () => clearTimeout(timer);
+  }, [
+    currentLineKey,
+    line,
+    lineFallbackReadyAt,
+    lineGateKey,
+    lineGateReadyAt,
+    scene.sceneId,
+    sceneOneShotWaiting,
+    storyAuto,
+    typing,
+    voiceGateStatus,
+  ]);
+
+  useEffect(() => {
+    if (!line || !storyAuto || typing) return;
+    if (sceneOneShotWaiting) return;
     if (line.interactionMode !== "npc2") return;
 
     const key = `${scene.sceneId}:${line.id}`;
@@ -1054,6 +1402,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     lineGateReadyAt,
     openNpcInteraction,
     scene.sceneId,
+    sceneOneShotWaiting,
     storyAuto,
     typing,
     voiceGateStatus,
@@ -1121,16 +1470,18 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     const secondary = ambientSecondaryRef.current;
     if (!bgm || !primary || !secondary) return;
 
-    if (introVisible || done) {
+    if ((introVisible && introState !== "transition") || done) {
       fadeTo("bgm", bgm, 0, 260);
       fadeTo("ambientPrimary", primary, 0, 260);
       fadeTo("ambientSecondary", secondary, 0, 260);
       return;
     }
 
+    const inEntryTransition = introVisible && introState === "transition";
     const bgmBase = scene.bgm?.volume ?? DEFAULT_BGM;
-    const ambientPrimaryBase = scene.ambientLayers?.primary || scene.ambientAudio ? DEFAULT_AMBIENT_PRIMARY : 0;
-    const ambientSecondaryBase = scene.ambientLayers?.secondary ? DEFAULT_AMBIENT_SECONDARY : 0;
+    const ambientPrimaryBase =
+      !inEntryTransition && (scene.ambientLayers?.primary || scene.ambientAudio) ? DEFAULT_AMBIENT_PRIMARY : 0;
+    const ambientSecondaryBase = !inEntryTransition && scene.ambientLayers?.secondary ? DEFAULT_AMBIENT_SECONDARY : 0;
 
     baseMixRef.current = {
       bgm: bgmBase,
@@ -1150,7 +1501,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     fadeTo("bgm", bgm, bgmBase, 1200);
     fadeTo("ambientPrimary", primary, ambientPrimaryBase, 900);
     fadeTo("ambientSecondary", secondary, ambientSecondaryBase, 700);
-  }, [configureLoopTrack, done, fadeTo, introVisible, scene]);
+  }, [configureLoopTrack, done, fadeTo, introState, introVisible, scene]);
 
   useEffect(() => {
     const bgm = bgmRef.current;
@@ -1177,6 +1528,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     fadeTo("ambientSecondary", secondary, ambientSecondaryTarget, voiceActive ? 380 : 500);
   }, [activeNpcId, activePhase, done, fadeTo, introVisible, oneShotVideoPlaying, voiceActive]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (introVisible || done || !line) {
       stopVoice();
@@ -1242,13 +1594,13 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       // Differentiate playback speed by voice track type
       const track = line?.voiceTrack;
       if (track === "scene") {
-        voice.playbackRate = 0.88; // 旁白：沉稳缓慢
+        voice.playbackRate = 1.0; // 旁白：沉稳缓慢
       } else if (track === "inner") {
-        voice.playbackRate = 0.92; // 主角心声：略慢，内省
+        voice.playbackRate = 1.0; // 主角心声：略慢，内省
       } else if (track === "quote") {
-        voice.playbackRate = 0.85; // 课文原句：庄重缓慢
+        voice.playbackRate = 1.0; // 课文原句：庄重缓慢
       } else {
-        voice.playbackRate = 0.9; // 默认稍慢
+        voice.playbackRate = 1.0; // 默认稍慢
       }
       try {
         setVoiceGateStatus("playing");
@@ -1274,21 +1626,28 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       stopVoice();
     };
   }, [done, introVisible, line, scene.lineVoiceOverrides, sceneId, stopVoice, tryResolveVoiceSrc]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!showSceneVideo) return;
     const video = sceneVideoRef.current;
     if (!video) return;
+    const videoSrc = scene.backgroundVideo ?? "";
 
     if (scene.videoMode === "play_once_then_image") {
-      video.currentTime = 0;
+      const alreadyPlayingSameVideo =
+        video.dataset.oneShotSrc === videoSrc && !video.ended && video.currentTime > 0;
+      if (!alreadyPlayingSameVideo) {
+        video.currentTime = 0;
+      }
+      video.dataset.oneShotSrc = videoSrc;
     }
 
     const p = video.play();
     if (p && typeof p.catch === "function") {
       p.catch(() => {});
     }
-  }, [scene.videoMode, showSceneVideo, sceneId]);
+  }, [scene.backgroundVideo, scene.videoMode, showSceneVideo, sceneId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1296,7 +1655,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      if (introVisible || done || jump) return;
+      if (introVisible || done || jump || activeCheckpoint || spaceBlockedBySceneVideo) return;
 
       if (interactionActive) {
         if (!SPACE_SKIP_NO_API) return;
@@ -1329,6 +1688,18 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
         }
         return;
       }
+
+      if (line.lineType === "checkpoint") {
+        const key = `${scene.sceneId}:${line.id}`;
+        if (!openedInteractionsRef.current.has(key)) {
+          openedInteractionsRef.current.add(key);
+          setActiveCheckpoint({
+            lineId: line.id,
+            choices: line.checkpointChoices?.filter(Boolean).slice(0, 2) ?? ["继续前进"],
+          });
+        }
+        return;
+      }
       advance();
     };
 
@@ -1336,6 +1707,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     advance,
+    activeCheckpoint,
     done,
     interactionActive,
     introVisible,
@@ -1345,8 +1717,56 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
     scene.sceneId,
     sceneId,
     skipInteractionBySpace,
+    spaceBlockedBySceneVideo,
     stopVoice,
   ]);
+
+  useEffect(() => {
+    if (deviceMode !== "rokid") return;
+
+    const runCommand = (action: string | undefined) => {
+      switch (action) {
+        case "start":
+          if (introVisible) {
+            skipIntro();
+          } else {
+            setPaused(false);
+          }
+          break;
+        case "pause":
+          if (!introVisible && !done) {
+            setPaused((prev) => !prev);
+          }
+          break;
+        case "next":
+          window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " " }));
+          break;
+        case "home":
+          goHome();
+          break;
+        case "reset":
+          resetAll();
+          break;
+        case "reload":
+          window.location.reload();
+          break;
+        default:
+          break;
+      }
+    };
+
+    const onRokidCommand = (event: Event) => {
+      const customEvent = event as CustomEvent<{ action?: string }>;
+      runCommand(customEvent.detail?.action);
+    };
+
+    window.__TAOHUAYUAN_ROKID_COMMAND__ = (action: string) => runCommand(action);
+    window.addEventListener("rokid-command", onRokidCommand);
+    return () => {
+      window.removeEventListener("rokid-command", onRokidCommand);
+      delete window.__TAOHUAYUAN_ROKID_COMMAND__;
+    };
+  }, [deviceMode, done, goHome, introVisible, resetAll, skipIntro]);
 
   const progressText = `${visited.length}/${bundle.scenes.length}`;
   const isRoleplayPhase = activePhase === "aqiao" || activePhase === "chief";
@@ -1355,26 +1775,83 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
   const isPeerRound4 = activePhase === "peer_round4";
   const isPeerDone = activePhase === "peer_done";
   const isFollowUpDecision = isRoleplayPhase && canContinue;
-  const canUseManualInput = (isRoleplayPhase || isPeerOpenRound) && !isFollowUpDecision;
-  const showManualInput = canUseManualInput && manualInputOpen;
+  const isPeerAwaitingNextPrompt = Boolean(peerNextPrompt);
+  const canUseManualInput = isRoleplayPhase || isPeerRound1 || isPeerOpenRound || isPeerRound4;
+  const showManualInput =
+    canUseManualInput && (!isFollowUpDecision || manualInputOpen) && !isPeerDone && !isPeerAwaitingNextPrompt;
   const disableNpcInput = npcBusy || !showManualInput;
   const presetReplies = getPresetReplies(activeNpcId, activePhase);
+  const guideReplies = isPeerRound1
+    ? peerFlow.round1.options.map((option) => option.text)
+    : isPeerRound4
+      ? peerFlow.round4.options.map((option) => option.text)
+      : presetReplies;
+  const showGuideReplies =
+    !isFollowUpDecision &&
+    !isPeerDone &&
+    guideReplies.length > 0 &&
+    showManualInput;
+  const responsePlaceholder = isPeerRound1
+    ? "用自己的话回应同业渔人。可含蓄，可否认，但别把奇境说透..."
+    : isPeerRound4
+      ? "表明你是否愿意让外人知道。重点是分寸，而不是照抄选项..."
+      : isPeerOpenRound
+        ? "继续按渔人口吻作答，按 Enter 回话..."
+        : "自己组织一句回应，按 Enter 回话...";
+  const submitResponseLabel = isPeerRound1
+    ? "回应"
+    : isPeerRound4
+      ? "定夺"
+      : isPeerOpenRound
+        ? "作答"
+        : "确认";
   const latestNpcTurn = [...turns].reverse().find((turn) => turn.tone === "npc");
+  const latestNonUserTurn = [...turns].reverse().find((turn) => turn.tone !== "user");
+  const pendingNpcSpeechTask =
+    (activeSpeechTurnId ? npcSpeechQueue.find((task) => task.turnId === activeSpeechTurnId) : undefined) ??
+    npcSpeechQueue[0];
+  const preferredDisplayTurn = isPeerDone ? latestNonUserTurn : latestNpcTurn ?? latestNonUserTurn;
+  const latestNpcText =
+    preferredDisplayTurn?.text && preferredDisplayTurn.text.trim().length > 0
+      ? preferredDisplayTurn.text
+      : pendingNpcSpeechTask?.fullText ?? activeNpc?.openingLine ?? "";
+  const activeSpeakerName = preferredDisplayTurn?.speaker ?? activeNpc?.name ?? "";
+  const activeSpeakerRole = preferredDisplayTurn?.tone === "narration" ? "场景旁白" : activeNpc?.role ?? "";
+  const submitCurrentResponse = () => {
+    if (isRoleplayPhase) {
+      const presetMessage = selectedPresetReply ?? matchPresetReply(activeNpcId, activePhase, npcInput);
+      void submitRoleplay(presetMessage ?? undefined);
+      return;
+    }
+    if (isPeerRound1) {
+      submitPeerRound1FreeReply();
+      return;
+    }
+    if (isPeerOpenRound) {
+      const presetMessage = selectedPresetReply ?? matchPresetReply(activeNpcId, activePhase, npcInput);
+      void submitPeerOpenRound(presetMessage ?? undefined);
+      return;
+    }
+    if (isPeerRound4) {
+      submitPeerRound4FreeReply();
+    }
+  };
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden bg-black">
+    <main className="relative h-screen w-screen overflow-hidden bg-black" data-device-mode={deviceMode}>
       <Image
         src={displayBackdrop}
         alt={scene.title}
         fill
         priority
+        unoptimized
         sizes="100vw"
-        className={isPeerFisherInteraction ? "object-contain bg-[#1a120d]" : "object-cover"}
+        className={`scene-backdrop scene-backdrop--${displayArtTone} ${isPeerFisherInteraction ? "scene-backdrop--peer" : ""}`}
       />
 
       {showSceneVideo && scene.backgroundVideo ? (
         <video
-          key={`${sceneId}_${scene.backgroundVideo}`}
+          key={scene.videoMode === "play_once_then_image" ? scene.backgroundVideo : `${sceneId}_${scene.backgroundVideo}`}
           ref={sceneVideoRef}
           src={scene.backgroundVideo}
           className="absolute inset-0 h-full w-full object-cover"
@@ -1385,18 +1862,26 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
           loop={scene.videoMode !== "play_once_then_image"}
           onEnded={() => {
             if (scene.videoMode === "play_once_then_image") {
-              setVideoEndedByScene((prev) => ({ ...prev, [sceneId]: true }));
+              setVideoEndedByScene((prev) => ({ ...prev, [sceneVideoStateKey]: true }));
+            }
+          }}
+          onError={() => {
+            if (scene.videoMode === "play_once_then_image") {
+              setVideoEndedByScene((prev) => ({ ...prev, [sceneVideoStateKey]: true }));
             }
           }}
         />
       ) : null}
 
-      <div className="absolute inset-0 bg-gradient-to-b from-black/28 via-black/10 to-black/74" />
+      <div className={`scene-color-grade scene-color-grade--${artTone}`} />
+      <div className={`scene-foreground scene-foreground--${artTone}`} />
+      <div className="scene-paper-grain" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/6 to-black/72" />
       {interactionActive && isPeerFisherInteraction ? (
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(43,30,20,0.18),rgba(43,30,20,0.48))]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(43,30,20,0.05),rgba(43,30,20,0.44))]" />
       ) : null}
 
-      <section className="relative z-10 flex h-full flex-col">
+      <section className="relative z-10 flex h-full flex-col" inert={introVisible ? true : undefined} aria-hidden={introVisible}>
         <header className="flex items-start justify-between px-5 pt-6 text-white md:px-10 pointer-events-auto">
           <div className="relative group">
             <h1 className="text-lg font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#f0d4a2] to-[#d6a86c] md:text-2xl drop-shadow-[0_2px_10px_rgba(214,168,108,0.4)]">
@@ -1412,11 +1897,12 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
           <div className="flex items-center gap-3">
             <button
               type="button"
+              disabled={introVisible || interactionActive || done}
               onClick={() => {
                 if (introVisible || interactionActive || done) return;
                 setPaused((prev) => !prev);
               }}
-              className="relative overflow-hidden rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white/90 backdrop-blur-md transition-all hover:bg-white/15 hover:border-white/20 active:scale-95 group shadow-[0_0_15px_rgba(0,0,0,0.5)]"
+              className="relative overflow-hidden rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white/90 backdrop-blur-md transition-all hover:bg-white/15 hover:border-white/20 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 group shadow-[0_0_15px_rgba(0,0,0,0.5)]"
             >
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent group-hover:opacity-0 transition-opacity" />
               {introVisible ? "加载中" : paused ? "▶ 继 续" : "॥ 暂 停"}
@@ -1431,30 +1917,54 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
           </div>
         </header>
 
-        <div className="relative flex flex-1 items-end px-4 pb-8 md:px-12 md:pb-12 pointer-events-none">
-          <article className="w-full max-w-4xl mx-auto rounded-3xl border border-white/10 bg-[#080503]/50 px-6 py-5 text-white backdrop-blur-[24px] shadow-[0_20px_40px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.05)] text-center relative overflow-hidden transition-all duration-[800ms]">
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#d6a86c]/40 to-transparent" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(214,168,108,0.08),transparent_70%)] pointer-events-none" />
-            
-            <div className="mb-3 flex items-center justify-center gap-3 relative z-10">
-              <span className="rounded-full bg-gradient-to-r from-[#ac8353] to-[#73512b] px-3 py-0.5 text-[10px] font-bold tracking-widest text-[#fcf1df] shadow-[0_2px_8px_rgba(172,131,83,0.4)]">
-                {currentSpeaker}
-              </span>
-              {scene.description && (
-                <p className="max-w-[70%] truncate text-xs font-medium tracking-wide text-white/50">{scene.description}</p>
-              )}
-            </div>
-            <p
-              className={`min-h-[2.5rem] md:min-h-[3rem] text-lg leading-loose tracking-[0.06em] md:text-[1.35rem] font-medium relative z-10 ${
-                line?.voiceTrack === "quote" ? "text-transparent bg-clip-text bg-gradient-to-r from-[#fceabb] to-[#f8b500] drop-shadow-sm font-semibold" : "text-[#ebe1d5] drop-shadow-md"
-              }`}
-            >
-              {lineText}
-              {typing ? <span className="typing-caret">|</span> : null}
-            </p>
-          </article>
-        </div>
+        {!interactionActive ? (
+          <div className="relative flex flex-1 items-end px-4 pb-7 md:px-12 md:pb-10 pointer-events-none">
+            <article className={`story-caption story-caption--${artTone}`}>
+              <div className="story-caption__shine" />
+              
+              <div className="mb-3 flex items-center justify-center gap-3 relative z-10">
+                <span className="story-caption__speaker">
+                  {currentSpeaker}
+                </span>
+                {scene.description && (
+                  <p className="max-w-[70%] truncate text-xs font-medium tracking-wide text-white/50">{scene.description}</p>
+                )}
+              </div>
+              <p
+                className={`min-h-[2.5rem] md:min-h-[3rem] text-lg leading-loose tracking-[0.06em] md:text-[1.35rem] font-medium relative z-10 ${
+                  line?.voiceTrack === "quote" ? "text-transparent bg-clip-text bg-gradient-to-r from-[#fceabb] to-[#f8b500] drop-shadow-sm font-semibold" : "text-[#ebe1d5] drop-shadow-md"
+                }`}
+              >
+                {lineText}
+                {typing ? <span className="typing-caret">|</span> : null}
+              </p>
+            </article>
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
       </section>
+
+      {activeCheckpoint ? (
+        <div className="absolute bottom-36 left-1/2 z-20 -translate-x-1/2">
+          <div className="flex flex-wrap items-center justify-center gap-2 rounded-full border border-white/30 bg-black/38 px-2 py-1 backdrop-blur">
+            {activeCheckpoint.choices.map((choice, index) => (
+              <button
+                key={`${activeCheckpoint.lineId}:${choice}:${index}`}
+                type="button"
+                onClick={submitCheckpointChoice}
+                className={
+                  index === 0
+                    ? "rounded-full border border-[#e2c48c] bg-[#6b3f19]/85 px-4 py-1.5 text-xs text-[#f9e8c7]"
+                    : "rounded-full border border-[#d8c5a2]/65 bg-[#2f3b46]/70 px-4 py-1.5 text-xs text-[#eff5fb]"
+                }
+              >
+                {choice}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {jump ? (
         <div className="absolute bottom-36 left-1/2 z-20 -translate-x-1/2">
@@ -1480,32 +1990,61 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
       {introVisible ? (
         <div className="absolute inset-0 z-50 bg-black">
           <video
+            key={introState === "transition" ? ENTRY_TRANSITION_VIDEO : INTRO_VIDEO}
             ref={introVideoRef}
-            src={INTRO_VIDEO}
+            src={introState === "transition" ? ENTRY_TRANSITION_VIDEO : INTRO_VIDEO}
             className="h-full w-full object-cover opacity-90 transition-opacity duration-1000"
             autoPlay
             playsInline
             preload="auto"
+            muted={introState === "transition"}
             onLoadedMetadata={(event) => {
-              event.currentTarget.muted = false;
-              event.currentTarget.volume = 1;
+              const transitionMuted = introState === "transition";
+              event.currentTarget.muted = transitionMuted;
+              event.currentTarget.volume = transitionMuted ? 0 : 1;
             }}
-            onEnded={() => setIntroState("ready")}
-            onError={() => setIntroState("ready")}
+            onEnded={() => {
+              if (introState === "transition") {
+                setIntroVisible(false);
+                return;
+              }
+              setIntroState("ready");
+            }}
+            onError={() => {
+              if (introState === "transition") {
+                setIntroVisible(false);
+                return;
+              }
+              setIntroState("ready");
+            }}
           />
           <div className="absolute inset-x-0 bottom-0 top-[60%] bg-gradient-to-t from-[#080503] via-[#080503]/80 to-transparent pointer-events-none" />
           
           <div className="absolute inset-x-0 bottom-[12%] flex flex-col items-center justify-end z-10">
-            {introState === "playing" ? (
-              <div className="flex flex-col items-center animate-pulse duration-1000">
-                <span className="text-[11px] tracking-[0.3em] text-[#d6a86c]/70 font-medium">序幕</span>
-                <span className="mt-2 text-sm text-white/60 tracking-wider">入卷中...</span>
+            {introState === "playing" || introState === "transition" ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex flex-col items-center animate-pulse duration-1000">
+                  <span className="text-[11px] tracking-[0.3em] text-[#d6a86c]/70 font-medium">
+                    {introState === "transition" ? "入境" : "序幕"}
+                  </span>
+                  <span className="mt-2 text-sm text-white/60 tracking-wider">
+                    {introState === "transition" ? "循光入画..." : "入卷中..."}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={skipIntro}
+                  className="rounded-full border border-[#d6a86c]/32 bg-black/36 px-5 py-2 text-xs font-semibold tracking-[0.18em] text-[#e8d0a6] backdrop-blur-md transition hover:border-[#d6a86c]/70 hover:bg-[#d6a86c]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#d6a86c]"
+                >
+                  {introState === "transition" ? "跳过转场" : "跳过序幕"}
+                </button>
               </div>
             ) : (
               <button
+                ref={introStartButtonRef}
                 type="button"
-                onClick={() => setIntroVisible(false)}
-                className="group relative overflow-hidden rounded-full border border-[#d6a86c]/40 bg-gradient-to-br from-[#1a140f]/90 to-[#0a0705]/90 px-12 py-3.5 backdrop-blur-md shadow-[0_10px_30px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(214,168,108,0.2)] transition-all hover:scale-105 hover:-translate-y-1 hover:border-[#d6a86c] active:scale-95 animate-in fade-in zoom-in duration-500"
+                onClick={() => setIntroState("transition")}
+                className="group relative overflow-hidden rounded-full border border-[#d6a86c]/40 bg-gradient-to-br from-[#1a140f]/90 to-[#0a0705]/90 px-12 py-3.5 backdrop-blur-md shadow-[0_10px_30px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(214,168,108,0.2)] transition-all hover:scale-105 hover:-translate-y-1 hover:border-[#d6a86c] active:scale-95 animate-in fade-in zoom-in duration-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#d6a86c]"
               >
                 <div className="absolute inset-0 -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12" />
                 <span className="text-[15px] font-bold tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-[#f9ebcf] to-[#c79c65]">
@@ -1520,43 +2059,53 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
 
       {interactionActive && activeNpc ? (
         <div className="absolute inset-x-0 bottom-0 z-40 px-2 pb-3 md:px-8 md:pb-6 pointer-events-none flex justify-center">
-          <div className="relative w-full max-w-5xl pointer-events-auto flex items-end">
-            {/* NPC Portrait Segment - Breakout & Enlarged Layout */}
+          <div className={`dialogue-stage-shell ${isPeerFisherInteraction ? "dialogue-stage-shell--peer" : ""}`}>
+            {/* NPC Portrait Segment */}
             {!isPeerFisherInteraction ? (
-              <aside className="relative z-20 hidden md:block w-[300px] lg:w-[350px] shrink-0 transform translate-y-2 translate-x-4">
-                <div className="relative h-[480px] w-full">
-                  <Image 
-                    src={activeNpc.portraitImage} 
-                    alt={activeNpc.name} 
-                    fill 
-                    sizes="(max-width: 1024px) 300px, 350px" 
-                    className="object-contain object-bottom drop-shadow-2xl opacity-100 transition-opacity duration-500 will-change-transform animate-[fade-in-up_0.6s_ease-out_forwards]"
-                    style={{ filter: "drop-shadow(0 20px 25px rgba(0,0,0,0.4))" }}
-                  />
-                  {/* Subtle ground shadow / fade out at the bottom */}
-                  <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/80 via-black/30 to-transparent rounded-b-3xl pointer-events-none" />
-                </div>
+              <aside className={`npc-stage ${portraitTone} hidden md:block`}>
+                <div className="npc-stage__aura" />
+                <div className="npc-stage__ink" />
+                <Image
+                  src={activeNpc.portraitImage}
+                  alt={activeNpc.name}
+                  fill
+                  sizes="(max-width: 1024px) 300px, 360px"
+                  className="npc-stage__image"
+                  priority
+                />
+                <div className="npc-stage__foot" />
               </aside>
             ) : null}
 
             {/* Main Interactive Panel - Glassmorphism, Premium Dark Look */}
-            <div className={`relative min-w-0 flex-1 z-10 w-full rounded-[2rem] border border-white/10 bg-[#120d09]/80 px-4 py-5 md:px-8 md:py-7 shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0__1px_1px_rgba(255,255,255,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#1a1410]/60 ${!isPeerFisherInteraction ? '-ml-8' : ''}`}>
+            <div className={`dialogue-stage-panel ${isPeerFisherInteraction ? "dialogue-stage-panel--peer" : ""}`}>
               
               {/* NPC Info Label (floating style) */}
-              {!isPeerFisherInteraction && (
-                <div className="absolute -top-3 left-12 px-4 py-1 bg-gradient-to-r from-[#8a6842] to-[#5c4021] rounded-full border border-[#d4af82]/30 shadow-lg hidden md:block">
-                  <span className="text-sm font-semibold tracking-widest text-[#f9ebcf] drop-shadow-md">{activeNpc.name}</span>
-                  <span className="ml-2 text-[10px] text-[#e0caa5]/90 border-l border-white/20 pl-2">{activeNpc.role}</span>
-                </div>
-              )}
+              <div className="dialogue-nameplate hidden md:block">
+                <span className="text-sm font-semibold tracking-widest text-[#f9ebcf] drop-shadow-md">{activeSpeakerName}</span>
+                {activeSpeakerRole ? (
+                  <span className="ml-2 text-[10px] text-[#e0caa5]/90 border-l border-white/20 pl-2">{activeSpeakerRole}</span>
+                ) : null}
+              </div>
 
               <div className="flex flex-col gap-4">
                 {/* NPC Speech Box */}
                 <section className="relative px-5 py-4 w-full">
                   <div className="absolute left-0 top-0 bottom-0 w-[4px] rounded-full bg-gradient-to-b from-[#d6a86c] to-transparent opacity-80" />
-                  <p className="md:hidden mb-1 text-xs font-semibold text-[#d4af82] tracking-wider">{activeNpc.name} <span className="text-[10px] text-[#cca070]/70 font-normal">· {activeNpc.role}</span></p>
+                  <div className="mb-2 flex items-center gap-3 md:hidden">
+                    {!isPeerFisherInteraction ? (
+                      <span className={`mobile-portrait ${portraitTone}`}>
+                        <Image src={activeNpc.portraitImage} alt="" fill sizes="48px" className="object-cover object-top" />
+                      </span>
+                    ) : null}
+                    <p className="text-xs font-semibold text-[#d4af82] tracking-wider">{activeSpeakerName}</p>
+                  </div>
+                  <p className="sr-only">
+                    {activeSpeakerName}
+                    {activeSpeakerRole ? <span className="text-[10px] text-[#cca070]/70 font-normal">· {activeSpeakerRole}</span> : null}
+                  </p>
                   <p className="text-base leading-relaxed tracking-wide text-[#f2e6d5] md:text-xl drop-shadow-sm font-medium">
-                    {latestNpcTurn?.text ?? activeNpc.openingLine}
+                    {latestNpcText}
                   </p>
                 </section>
 
@@ -1569,7 +2118,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
                       <span className="h-4 w-[2px] bg-[#ac8551] rounded-full inline-block" /> 
                       你的回应
                     </p>
-                    {showManualInput ? (
+                    {isFollowUpDecision && showManualInput ? (
                       <button
                         type="button"
                         onClick={() => setManualInputOpen(false)}
@@ -1581,7 +2130,7 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
                   </div>
 
                   {npcBusy && pendingUserMessage ? (
-                    <div className="mb-3 rounded-2xl border border-[#d6a86c]/20 bg-[#1a120d]/70 px-4 py-3 text-sm text-[#ead8bf]">
+                    <div className="mb-3 rounded-lg border border-[#d6a86c]/20 bg-[#1a120d]/70 px-4 py-3 text-sm text-[#ead8bf]">
                       <div className="flex items-center justify-between gap-3">
                         <span className="truncate">已发送：{pendingUserMessage}</span>
                         <span className="shrink-0 text-xs text-[#d6a86c]">对方回应中...</span>
@@ -1589,147 +2138,99 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
                     </div>
                   ) : null}
 
-                  <div className="w-full flex-1 flex flex-col justify-end">
-                    {isPeerRound1 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {peerFlow.round1.options.map((option) => {
-                          const card = toPeerChoiceCard("round1", option.id, option.text);
-                          const selected = selectedRound1Option === option.id;
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => selectRound1Choice(option.id)}
-                              disabled={npcBusy || Boolean(selectedRound1Option)}
-                              className={`group relative overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b98f] active:scale-[0.98] disabled:opacity-60 ${
-                                selected
-                                  ? "border-[#dcb57e] bg-gradient-to-br from-[#5e432a] to-[#3a2818] shadow-[0_0_20px_rgba(220,181,126,0.3)]"
-                                  : "border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 hover:-translate-y-1 hover:shadow-xl"
-                              }`}
-                            >
-                              <div className="relative z-10">
-                                <p className={`text-sm md:text-base font-medium tracking-wide ${selected ? 'text-[#fdf2e1]' : 'text-[#e6d5bc] group-hover:text-white'}`}>{card.title}</p>
-                                <p className={`mt-1.5 text-xs leading-relaxed ${selected ? 'text-[#d6bda0]' : 'text-[#c2ab90] group-hover:text-[#eee0cc]'}`}>{card.detail}</p>
-                              </div>
-                              {selected && <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(220,181,126,0.15),transparent_70%)] animate-pulse" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-
-                    {isPeerRound4 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {peerFlow.round4.options.map((option) => {
-                          const card = toPeerChoiceCard("round4", option.id, option.text);
-                          const selected = selectedRound4Option === option.id;
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => selectRound4Choice(option.id)}
-                              disabled={npcBusy || Boolean(selectedRound4Option)}
-                              className={`group relative overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b98f] active:scale-[0.98] disabled:opacity-60 ${
-                                selected
-                                  ? "border-[#dcb57e] bg-gradient-to-br from-[#5e432a] to-[#3a2818] shadow-[0_0_20px_rgba(220,181,126,0.3)]"
-                                  : "border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 hover:-translate-y-1 hover:shadow-xl"
-                              }`}
-                            >
-                              <div className="relative z-10">
-                                <p className={`text-sm md:text-base font-medium tracking-wide ${selected ? 'text-[#fdf2e1]' : 'text-[#e6d5bc] group-hover:text-white'}`}>{card.title}</p>
-                                <p className={`mt-1.5 text-xs leading-relaxed ${selected ? 'text-[#d6bda0]' : 'text-[#c2ab90] group-hover:text-[#eee0cc]'}`}>{card.detail}</p>
-                              </div>
-                              {selected && <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(220,181,126,0.15),transparent_70%)] animate-pulse" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-
-                    {(isRoleplayPhase || isPeerOpenRound) && !isFollowUpDecision && !isPeerDone && !manualInputOpen ? (
-                      <div className="flex flex-col gap-3">
-                        {presetReplies.length > 0 ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            {presetReplies.map((option) => (
-                              <button
-                                key={option}
-                                type="button"
-                                onClick={() => selectPresetReply(option)}
-                                disabled={npcBusy || Boolean(selectedPresetReply)}
-                                className={`rounded-xl border px-4 py-3 text-sm transition-all duration-300 ease-out focus-visible:outline-none active:scale-[0.98] disabled:opacity-60 overflow-hidden relative group ${
-                                  selectedPresetReply === option
-                                    ? "border-[#dcb57e]/70 bg-gradient-to-r from-[#5c4021]/80 to-[#4a3118]/80 text-[#fdf2e1]"
-                                    : "border-white/5 bg-black/20 text-[#dec8ab] hover:bg-white/5 hover:border-white/15 hover:text-white"
-                                }`}
-                              >
-                                <span className="relative z-10">{option}</span>
-                                {selectedPresetReply === option && <div className="absolute top-0 bottom-0 left-0 w-1 bg-[#dcb57e] shadow-[0_0_10px_rgba(220,181,126,1)]" />}
-                              </button>
-                            ))}
+                  <div className="w-full flex-1 flex flex-col justify-end gap-3">
+                    {showManualInput ? (
+                      <div className="flex w-full flex-col gap-3 animate-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <div className="relative flex-1 w-full group">
+                            <textarea
+                              value={npcInput}
+                              onChange={(event) => setNpcInput(event.target.value)}
+                              placeholder={responsePlaceholder}
+                              disabled={disableNpcInput}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" || event.shiftKey) return;
+                                event.preventDefault();
+                                submitCurrentResponse();
+                              }}
+                              className="h-24 w-full resize-none rounded-lg border border-[#d6a86c]/18 bg-[#080604]/72 px-5 py-4 text-base leading-7 text-[#fcf1df] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] outline-none backdrop-blur-md transition-all placeholder:text-[#d3b994]/35 focus:border-[#d6a86c]/64 focus:bg-[#130d08]/82 focus:ring-1 focus:ring-[#d6a86c]/45 disabled:opacity-50"
+                            />
+                            <div className="pointer-events-none absolute bottom-3 right-3 text-[10px] text-[#d6c5af]/35 opacity-0 transition-opacity group-focus-within:opacity-100">
+                              Enter 提交 · Shift+Enter 换行
+                            </div>
                           </div>
-                        ) : null}
-                        
-                        <div className="flex items-center gap-4 mt-2 mb-1 justify-center sm:justify-start">
-                          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent hidden sm:block" />
                           <button
                             type="button"
-                            onClick={() => setManualInputOpen(true)}
-                            disabled={npcBusy}
-                            className="group flex items-center gap-2 rounded-full border border-[#d6a86c]/30 bg-transparent px-5 py-2 text-sm text-[#d6a86c] transition-all hover:bg-[#d6a86c]/10 disabled:opacity-60"
+                            onClick={submitCurrentResponse}
+                            disabled={npcBusy || !npcInput.trim()}
+                            className="relative h-12 shrink-0 overflow-hidden rounded-lg border border-[#d6a86c]/45 bg-gradient-to-r from-[#7b4f24] via-[#b8813c] to-[#d0a160] px-7 text-sm font-semibold tracking-[0.16em] text-[#fff8ec] shadow-[0_14px_28px_rgba(0,0,0,0.38),0_0_22px_rgba(214,168,108,0.18)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(0,0,0,0.46),0_0_28px_rgba(214,168,108,0.24)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 sm:h-24"
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-message-square-plus group-hover:scale-110 transition-transform"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9 10h6"/><path d="M12 7v6"/></svg>
-                            自有言辞
+                            <span className="relative z-10">{npcBusy ? "回应中" : submitResponseLabel}</span>
+                            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/18 to-transparent transition-transform duration-700 hover:translate-x-full" />
                           </button>
-                          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent hidden sm:block" />
                         </div>
-                      </div>
-                    ) : null}
 
-                    {showManualInput ? (
-                      <div className="flex flex-col sm:flex-row gap-3 items-end w-full animate-in slide-in-from-bottom-2 duration-300">
-                        <div className="relative flex-1 w-full group">
-                          <textarea
-                            value={npcInput}
-                            onChange={(event) => setNpcInput(event.target.value)}
-                            placeholder="自己组织一句回应，按 Enter 回话..."
-                            disabled={disableNpcInput}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter" || event.shiftKey) return;
-                              event.preventDefault();
-                              if (isRoleplayPhase) {
-                                void submitRoleplay();
-                              } else if (isPeerOpenRound) {
-                                void submitPeerOpenRound();
-                              }
-                            }}
-                            className="h-16 w-full resize-none rounded-2xl border border-white/10 bg-[#0a0705]/60 px-5 py-4 text-base text-[#fcf1df] placeholder:text-white/20 outline-none backdrop-blur-md transition-all focus:border-[#d6a86c]/60 focus:bg-[#140e0a]/80 focus:ring-1 focus:ring-[#d6a86c]/50 disabled:opacity-50"
-                          />
-                          <div className="absolute right-3 bottom-3 opacity-0 group-focus-within:opacity-100 transition-opacity pointer-events-none text-white/20 text-[10px]">
-                            Press Enter ↵
+                        {showGuideReplies ? (
+                          <div className="flex flex-wrap gap-2">
+                            {isPeerRound1
+                              ? peerFlow.round1.options.map((option) => {
+                                  const card = toPeerChoiceCard("round1", option.id, option.text);
+                                  const selected = selectedRound1Option === option.id;
+                                  return (
+                                    <button
+                                      key={option.id}
+                                      type="button"
+                                      onClick={() => selectRound1Choice(option.id)}
+                                      disabled={npcBusy}
+                                      className={`rounded-lg border px-3 py-2 text-left text-xs leading-5 transition-all active:scale-[0.98] ${
+                                        selected
+                                          ? "border-[#dcb57e]/80 bg-[#4d3419]/72 text-[#fff2dd]"
+                                          : "border-white/10 bg-black/20 text-[#d8c3a4] hover:border-[#d6a86c]/40 hover:bg-[#d6a86c]/10 hover:text-[#fff4df]"
+                                      }`}
+                                    >
+                                      <span className="font-semibold">{card.title}</span>
+                                      <span className="ml-2 text-[#c4a77b]/80">{card.detail}</span>
+                                    </button>
+                                  );
+                                })
+                              : isPeerRound4
+                                ? peerFlow.round4.options.map((option) => {
+                                    const card = toPeerChoiceCard("round4", option.id, option.text);
+                                    const selected = selectedRound4Option === option.id;
+                                    return (
+                                      <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => selectRound4Choice(option.id)}
+                                        disabled={npcBusy}
+                                        className={`rounded-lg border px-3 py-2 text-left text-xs leading-5 transition-all active:scale-[0.98] ${
+                                          selected
+                                            ? "border-[#dcb57e]/80 bg-[#4d3419]/72 text-[#fff2dd]"
+                                            : "border-white/10 bg-black/20 text-[#d8c3a4] hover:border-[#d6a86c]/40 hover:bg-[#d6a86c]/10 hover:text-[#fff4df]"
+                                        }`}
+                                      >
+                                        <span className="font-semibold">{card.title}</span>
+                                        <span className="ml-2 text-[#c4a77b]/80">{card.detail}</span>
+                                      </button>
+                                    );
+                                  })
+                                : presetReplies.map((option) => (
+                                    <button
+                                      key={option}
+                                      type="button"
+                                      onClick={() => selectPresetReply(option)}
+                                      disabled={npcBusy}
+                                      className={`rounded-lg border px-3 py-2 text-left text-xs leading-5 transition-all active:scale-[0.98] ${
+                                        selectedPresetReply === option
+                                          ? "border-[#dcb57e]/80 bg-[#4d3419]/72 text-[#fff2dd]"
+                                          : "border-white/10 bg-black/20 text-[#d8c3a4] hover:border-[#d6a86c]/40 hover:bg-[#d6a86c]/10 hover:text-[#fff4df]"
+                                      }`}
+                                    >
+                                      {option}
+                                    </button>
+                                  ))}
                           </div>
-                        </div>
-                        <div className="flex h-16 shrink-0 sm:self-stretch items-center gap-2">
-                          {isRoleplayPhase ? (
-                            <button
-                              type="button"
-                              onClick={() => void submitRoleplay()}
-                              disabled={npcBusy}
-                              className="h-14 rounded-2xl bg-gradient-to-br from-[#c49253] to-[#8f6330] px-6 text-sm font-medium text-[#fff] shadow-lg shadow-[#8f6330]/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#8f6330]/40 active:scale-95 disabled:opacity-60 flex items-center gap-2"
-                            >
-                              {npcBusy ? "回应中..." : "确 认"}
-                            </button>
-                          ) : null}
-                          {isPeerOpenRound ? (
-                            <button
-                              type="button"
-                              onClick={() => void submitPeerOpenRound()}
-                              disabled={npcBusy}
-                              className="h-14 rounded-2xl bg-gradient-to-br from-[#c49253] to-[#8f6330] px-6 text-sm font-medium text-[#fff] shadow-lg shadow-[#8f6330]/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#8f6330]/40 active:scale-95 disabled:opacity-60 flex items-center gap-2"
-                            >
-                              {npcBusy ? "作答中..." : "确 认"}
-                            </button>
-                          ) : null}
-                        </div>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -1745,6 +2246,19 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-60 group-hover:opacity-100 transition-opacity"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                           继续闲谈
+                        </button>
+                      ) : null}
+
+                      {isPeerAwaitingNextPrompt ? (
+                        <button
+                          type="button"
+                          onClick={continuePeerQuestion}
+                          disabled={npcBusy}
+                          className="relative overflow-hidden rounded-full border border-[#d6a86c]/40 bg-gradient-to-r from-[#44301d]/90 to-[#2c1d10]/90 px-8 py-2.5 text-sm font-medium text-[#fcf3e3] shadow-[0_4px_16px_rgba(0,0,0,0.5)] transition-all hover:border-[#d6a86c]/80 hover:shadow-[0_4px_24px_rgba(214,168,108,0.25)] active:scale-95 disabled:opacity-50 flex items-center gap-2 group"
+                        >
+                          继续追问
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right group-hover:translate-x-1 transition-transform"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                          <div className="absolute inset-0 -translate-x-full animate-[shimmer_3s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                         </button>
                       ) : null}
 
@@ -1775,13 +2289,13 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
           <div className="absolute bottom-[10%] right-[15%] w-[400px] h-[400px] bg-[#4a3118]/15 rounded-full blur-[120px] pointer-events-none animate-pulse" style={{animationDuration: '6s'}} />
           <div className="absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#d6a86c]/5 rounded-full blur-[200px] pointer-events-none" />
 
-          <div className="relative w-full max-w-3xl rounded-[2.5rem] border border-[#ac8353]/30 bg-[#120a05]/80 p-[1px] shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_100px_rgba(214,168,108,0.08)] overflow-hidden max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-3xl rounded-lg border border-[#ac8353]/30 bg-[#120a05]/80 p-[1px] shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_100px_rgba(214,168,108,0.08)] overflow-hidden max-h-[90vh] overflow-y-auto">
             {/* Glossy spinning border effect */}
-            <div className="absolute inset-0 rounded-[2.5rem] overflow-hidden">
+            <div className="absolute inset-0 rounded-lg overflow-hidden">
               <div className="absolute -inset-[50%] animate-[spin_10s_linear_infinite] bg-gradient-to-br from-transparent via-[#d6a86c]/20 to-transparent opacity-50" />
             </div>
             
-            <div className="relative bg-[#0d0906] rounded-[2.5rem] p-8 md:p-12 w-full h-full flex flex-col items-center border border-[#3e2c1c]">
+            <div className="relative bg-[#0d0906] rounded-lg p-8 md:p-12 w-full h-full flex flex-col items-center border border-[#3e2c1c]">
               {/* Top decorative line */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-gradient-to-r from-transparent via-[#d6a86c] to-transparent shadow-[0_0_20px_#d6a86c]" />
 
@@ -1845,13 +2359,13 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
                   {/* === Stats Grid - 4 Dimensions === */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 delay-[500ms]">
                     {[
-                      { label: '途经景象', value: `${summary?.exploredScenes.length ?? visited.length}`, icon: '🏞️', sub: `共 ${bundle.scenes.length} 景` },
-                      { label: '言辞慎重', value: `${Math.max(0, 100 - leakScore * 10).toFixed(0)}`, icon: '🤫', sub: '越高越好' },
-                      { label: '对话深度', value: `${turns.length > 0 ? turns.length : '—'}`, icon: '💬', sub: '轮次' },
-                      { label: '守密指数', value: leakScore < 0.3 ? '高' : leakScore < 0.6 ? '中' : '低', icon: '🔒', sub: leakScore < 0.3 ? '滴水不漏' : leakScore < 0.6 ? '尚算谨慎' : '略有泄漏' },
+                      { label: '途经景象', value: `${summary?.exploredScenes.length ?? visited.length}`, mark: '景', sub: `共 ${bundle.scenes.length} 景` },
+                      { label: '最终分数', value: finalScore === null ? '—' : `${finalScore}`, mark: '评', sub: '评等依据' },
+                      { label: '对话深度', value: `${turns.length > 0 ? turns.length : '—'}`, mark: '话', sub: '轮次' },
+                      { label: '守密指数', value: leakScore < 0.3 ? '高' : leakScore < 0.6 ? '中' : '低', mark: '密', sub: leakScore < 0.3 ? '滴水不漏' : leakScore < 0.6 ? '尚算谨慎' : '略有泄漏' },
                     ].map((stat, i) => (
-                      <div key={stat.label} className="group flex flex-col items-center p-4 rounded-2xl border border-[#3e2c1c]/60 bg-[#17100b]/40 hover:bg-[#1f150e]/60 hover:border-[#5c4021]/50 transition-all duration-500" style={{animationDelay: `${600 + i * 120}ms`}}>
-                        <span className="text-xl mb-1" role="img" aria-label={stat.label}>{stat.icon}</span>
+                      <div key={stat.label} className="group flex flex-col items-center p-4 rounded-lg border border-[#3e2c1c]/60 bg-[#17100b]/40 hover:bg-[#1f150e]/60 hover:border-[#5c4021]/50 transition-all duration-500" style={{animationDelay: `${600 + i * 120}ms`}}>
+                        <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[#d6a86c]/28 bg-[#d6a86c]/8 text-xs font-semibold text-[#d6a86c]" aria-label={stat.label}>{stat.mark}</span>
                         <span className="text-[#8c7457] text-[10px] font-medium tracking-widest mb-1">{stat.label}</span>
                         <span className="text-2xl font-bold text-[#ebd8bf] group-hover:text-[#fceabb] transition-colors">{stat.value}</span>
                         <span className="text-[10px] text-[#6b5a45] mt-0.5">{stat.sub}</span>
@@ -1883,14 +2397,14 @@ export function LearningWorkspace({ bundle }: { bundle: LessonBundle }) {
                     </div>
                   </div>
 
-                  {/* === Epilogue Narrative Banner === */}
-                  {finalNarrative ? (
-                    <div className="relative text-center px-8 py-6 mx-4 rounded-2xl border border-[#d6a86c]/15 bg-gradient-to-br from-[#1a140e]/50 via-[#d6a86c]/5 to-[#1a140e]/50 animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-[800ms] overflow-hidden">
+                  {/* === Final Review Banner === */}
+                  {finalReview ? (
+                    <div className="relative text-center px-8 py-6 mx-4 rounded-lg border border-[#d6a86c]/15 bg-gradient-to-br from-[#1a140e]/50 via-[#d6a86c]/5 to-[#1a140e]/50 animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-[800ms] overflow-hidden">
                       {/* Subtle shimmer */}
                       <div className="absolute inset-0 -translate-x-full animate-[shimmer_5s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
                       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-px bg-gradient-to-r from-transparent via-[#d6a86c]/40 to-transparent" />
                       <p className="relative text-[10px] tracking-[0.25em] text-[#8c7457] font-medium mb-3">命运卷轴</p>
-                      <p className="relative text-base md:text-lg text-[#d1bd9e] leading-[2] tracking-wide font-medium">{finalNarrative}</p>
+                      <p className="relative text-base md:text-lg text-[#d1bd9e] leading-[2] tracking-wide font-medium">{finalReview}</p>
                       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-24 h-px bg-gradient-to-r from-transparent via-[#d6a86c]/40 to-transparent" />
                     </div>
                   ) : null}

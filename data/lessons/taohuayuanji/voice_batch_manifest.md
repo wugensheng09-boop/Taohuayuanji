@@ -1,7 +1,7 @@
-﻿# 批量配音执行清单（wen3-omni-30b-a3b-captioner）
+# 批量配音执行清单（wen3-omni-30b-a3b-captioner）
 
 - 模型: `wen3-omni-30b-a3b-captioner`
-- 总条数: 46
+- 总条数: 45
 
 ## 角色音色配置
 - narrator | 旁白 | 音色:中性温润 | 情绪:平静、轻柔、带画面感 | 语速:中慢 | 关键词:陪伴、展开、留白
@@ -30,8 +30,8 @@
 - forest_i2.mp3 | 旁白 | [quote] | 中无杂树，芳草鲜美，落英缤纷。
 - forest_l4.mp3 | 主角心声 | [inner] | 花瓣落在船头，我只想看看桃林尽头藏着什么。
 - cave_l1.mp3 | 旁白 | [scene] | 桃林到了尽头，前方忽然现出一座山。
-- cave_i1.mp3 | 主角心声 | [inner] | 山间像有一道小口，我把船慢慢靠过去。
 - cave_i2.mp3 | 旁白 | [quote] | 山有小口，仿佛若有光。
+- cave_i1.mp3 | 主角心声 | [inner] | 我弃舟上岸，慢慢走近。
 - cave_l4.mp3 | 旁白 | [quote] | 初极狭，才通人。复行数十步，豁然开朗。
 - view_l1.mp3 | 旁白 | [scene] | 入内之后，眼前土地平旷，屋舍井然。
 - view_i1.mp3 | 主角心声 | [inner] | 村口先有人看见我，神色骤然一紧。
@@ -41,8 +41,7 @@
 - village_i1.mp3 | 主角心声 | [inner] | 席间，族长放下酒盏，凝神问我今是何世。
 - village_i2.mp3 | 旁白 | [quote] | 乃不知有汉，无论魏晋。
 - village_l4.mp3 | 主角心声 | [inner] | 听完他们的话，我才知此地与外世隔绝已久。
-- ending_l1.mp3 | 旁白 | [scene] | 离开桃源后，我沿路做下记号。
-- ending_i1.mp3 | 旁白 | [scene] | 回到武陵，同业渔人立刻围上来追问。
+- ending_l1.mp3 | 旁白 | [scene] | 离开桃源后，我沿路做下记号，想着日后重返此地。
 - ending_i2.mp3 | 旁白 | [quote] | 寻向所志，遂迷，不复得路。
 - ending_l4.mp3 | 主角心声 | [inner] | 我这才懂得，有些地方能遇见，却未必能再抵达。
 - npc_aqiao_opening.mp3 | 阿樵 | [npc] | 见渔人，乃大惊。你不是此间人吧？这山路隐僻，你怎么会独自走到这里来？

@@ -26,16 +26,20 @@ function parseEnvFile(content) {
 }
 
 export function loadEnvFiles(rootDir) {
+  const searchDirs = [rootDir, path.dirname(rootDir)];
   const candidates = [".env", ".env.local"];
-  for (const fileName of candidates) {
-    const fullPath = path.join(rootDir, fileName);
-    if (!existsSync(fullPath)) {
-      continue;
-    }
-    const parsed = parseEnvFile(readFileSync(fullPath, "utf8"));
-    for (const [key, value] of Object.entries(parsed)) {
-      if (!(key in process.env)) {
-        process.env[key] = value;
+
+  for (const dir of searchDirs) {
+    for (const fileName of candidates) {
+      const fullPath = path.join(dir, fileName);
+      if (!existsSync(fullPath)) {
+        continue;
+      }
+      const parsed = parseEnvFile(readFileSync(fullPath, "utf8"));
+      for (const [key, value] of Object.entries(parsed)) {
+        if (!(key in process.env)) {
+          process.env[key] = value;
+        }
       }
     }
   }

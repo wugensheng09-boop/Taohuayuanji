@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     "desktop-release/**",
     "desktop-release*/**",
     "taohuayuan-mvp/**",
+    ".tmp-playwright.spec.cjs",
+    ".tmp-playwright/**",
+    "data/lessons/taohuayuanji/*.js",
     "next-env.d.ts",
   ]),
 ]);
