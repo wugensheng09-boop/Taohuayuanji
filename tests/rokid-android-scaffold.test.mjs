@@ -42,4 +42,7 @@ test("mobile controller module is wired for CXR-L CUSTOMAPP control", () => {
   assert.match(controller, /com\.taohuayuan\.rokid\.glass/);
   assert.match(controller, /appUploadAndInstall/);
   assert.match(controller, /sendCustomCmd/);
+  assert.match(controller, /choice:a/);
+  assert.match(controller, /choice:b/);
+  assert.match(controller, /choice:c/);
 });
