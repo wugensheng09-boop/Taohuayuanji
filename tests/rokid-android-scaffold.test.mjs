@@ -26,7 +26,8 @@ test("glass WebView module targets the formal Taohuayuan package and launch rout
 
   assert.match(gradle, /applicationId = "com\.taohuayuan\.rokid\.glass"/);
   assert.match(activity, /appendQueryParameter\("device", "rokid"\)/);
-  assert.match(activity, /appendQueryParameter\("autostart", "1"\)/);
+  assert.doesNotMatch(activity, /appendQueryParameter\("autostart", "1"\)/);
+  assert.doesNotMatch(activity, /\/learn\/taohuayuanji/);
   assert.match(activity, /RokidNativeBridge/);
 });
 

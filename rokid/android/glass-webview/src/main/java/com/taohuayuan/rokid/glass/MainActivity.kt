@@ -153,10 +153,9 @@ class MainActivity : Activity() {
     }
 
     private fun buildLaunchUrl(): String {
-        return Uri.parse("${BuildConfig.TAOHUA_WEB_BASE_URL}/learn/taohuayuanji")
+        return Uri.parse(BuildConfig.TAOHUA_WEB_BASE_URL)
             .buildUpon()
             .appendQueryParameter("device", "rokid")
-            .appendQueryParameter("autostart", "1")
             .build()
             .toString()
     }

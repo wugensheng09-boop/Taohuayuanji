@@ -86,6 +86,7 @@
       "river_l4": "river_l4"
     },
     "backgroundVideo": "/videos/taohuayuanji/s02_peach_forest_intro_v2.mp4",
+    "backgroundVideoAudio": "/audio/taohuayuanji/video-sfx/s02_peach_forest_intro_v2.mp3",
     "videoStartLineId": "river_i2",
     "videoBlockSceneExit": false,
     "videoFallbackImage": "/assets/taohuayuanji/redesign/peach-forest.png"
@@ -95,6 +96,7 @@
     "title": "忽逢桃花林",
     "backgroundImage": "/assets/taohuayuanji/redesign/peach-forest.png",
     "backgroundVideo": "/videos/taohuayuanji/s02_peach_forest_intro_v2.mp4",
+    "backgroundVideoAudio": "/audio/taohuayuanji/video-sfx/s02_peach_forest_intro_v2.mp3",
     "videoMode": "play_once_then_image",
     "videoFallbackImage": "/assets/taohuayuanji/redesign/peach-forest.png",
     "ambientLayers": {
@@ -178,6 +180,7 @@
     "title": "山洞入口",
     "backgroundImage": "/assets/taohuayuanji/redesign/cave-mouth.png",
     "backgroundVideo": "/videos/taohuayuanji/s03_enter_cave_v3.mp4",
+    "backgroundVideoAudio": "/audio/taohuayuanji/video-sfx/s03_enter_cave_v3.mp3",
     "videoStartLineId": "cave_l4",
     "videoMode": "play_once_then_image",
     "videoFallbackImage": "/assets/taohuayuanji/redesign/cave-interior.png",
@@ -354,6 +357,9 @@
     "sceneId": "village_talk",
     "title": "村中见闻",
     "backgroundImage": "/assets/taohuayuanji/redesign/village-banquet.png",
+    "backgroundVideo": "/videos/taohuayuanji/village-banquet.mp4",
+    "backgroundVideoAudio": "/audio/taohuayuanji/video-sfx/village-banquet.mp3",
+    "videoMode": "play_once_then_image",
     "videoFallbackImage": "/assets/taohuayuanji/redesign/village-banquet.png",
     "ambientLayers": {
       "primary": "/audio/taohuayuanji/ambience/村中生活声.MP3",
