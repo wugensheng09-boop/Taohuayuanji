@@ -31,7 +31,6 @@
 /rokid/android/**/build/
 /rokid/android/local.properties
 /public/audio/taohuayuanji/New audio/
-/public/videos/taohuayuanji/village-banquet.mp4
 
 # misc
 .DS_Store

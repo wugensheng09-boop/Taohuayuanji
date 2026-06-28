@@ -55,6 +55,8 @@ export interface SceneConfig {
     volume?: number;
   };
   backgroundVideo?: string;
+  backgroundVideoAudio?: string;
+  backgroundVideoAudioVolume?: number;
   videoStartLineId?: string;
   videoMode?: "loop" | "play_once_then_image";
   videoBlockSceneExit?: boolean;
