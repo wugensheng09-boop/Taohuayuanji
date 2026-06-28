@@ -1017,7 +1017,7 @@ export function LearningWorkspace({
     [addTurn, epilogueNpcMap, getNpcSide, peerFlow.round1.openerLines],
   );
 
-  const submitRoleplay = async (presetMessage?: string) => {
+  const submitRoleplay = useCallback(async (presetMessage?: string) => {
     if (!activeNpc || !activePhase || (activePhase !== "aqiao" && activePhase !== "chief")) return;
     const message = (presetMessage ?? npcInput).trim();
     if (!message || npcBusy) return;
@@ -1069,20 +1069,33 @@ export function LearningWorkspace({
       setSelectedPresetReply(null);
       setNpcBusy(false);
     }
-  };
+  }, [
+    activeNpc,
+    activePhase,
+    addTurn,
+    callChat,
+    canContinue,
+    getNpcSide,
+    lessonId,
+    line,
+    npcBusy,
+    npcInput,
+    sceneId,
+    sessionId,
+  ]);
 
-  const submitPeerRound1FreeReply = useCallback(() => {
+  const submitPeerRound1Message = useCallback((message: string) => {
     const npc = epilogueNpcMap.peer_fisher;
     if (!npc || activePhase !== "peer_round1" || npcBusy) return;
-    const message = npcInput.trim();
-    if (!message) return;
+    const finalMessage = message.trim();
+    if (!finalMessage) return;
 
-    const classification = classifyPeerFreeReply(message, "round1");
+    const classification = classifyPeerFreeReply(finalMessage, "round1");
     const choiceId = classification.choiceId as PeerChoiceId;
 
     setNpcBusy(true);
-    setPendingUserMessage(message);
-    addTurn("我", message, "user");
+    setPendingUserMessage(finalMessage);
+    addTurn("我", finalMessage, "user");
     const nextScore = leakScore + classification.leakScore;
     setLeakScore(nextScore);
     setNpcInput("");
@@ -1101,9 +1114,13 @@ export function LearningWorkspace({
     setActivePhase("peer_round2");
     setPendingUserMessage("");
     setNpcBusy(false);
-  }, [activePhase, addTurn, epilogueNpcMap.peer_fisher, getNpcSide, leakScore, npcBusy, npcInput, peerFlow.round2.prompts]);
+  }, [activePhase, addTurn, epilogueNpcMap.peer_fisher, getNpcSide, leakScore, npcBusy, peerFlow.round2.prompts]);
 
-  const submitPeerOpenRound = async (presetMessage?: string) => {
+  const submitPeerRound1FreeReply = useCallback(() => {
+    submitPeerRound1Message(npcInput);
+  }, [npcInput, submitPeerRound1Message]);
+
+  const submitPeerOpenRound = useCallback(async (presetMessage?: string) => {
     const npc = epilogueNpcMap.peer_fisher;
     if (!npc || (activePhase !== "peer_round2" && activePhase !== "peer_round3") || npcBusy) return;
     const message = (presetMessage ?? npcInput).trim();
@@ -1175,7 +1192,26 @@ export function LearningWorkspace({
     setPendingUserMessage("");
     setSelectedPresetReply(null);
     setNpcBusy(false);
-  };
+  }, [
+    activePhase,
+    addTurn,
+    callChat,
+    epilogueNpcMap.peer_fisher,
+    evaluateLeakSilently,
+    getNpcSide,
+    leakScore,
+    lessonId,
+    line,
+    npcBusy,
+    npcInput,
+    peerFlow.replyConstraints.forbidQuestions,
+    peerFlow.replyConstraints.maxChars,
+    peerFlow.round3.question,
+    peerFlow.round4.question,
+    sceneId,
+    sessionId,
+    turns,
+  ]);
 
   const continuePeerQuestion = useCallback(() => {
     const npc = epilogueNpcMap.peer_fisher;
@@ -1196,18 +1232,18 @@ export function LearningWorkspace({
     setSelectedPresetReply(null);
   }, [addTurn, epilogueNpcMap.peer_fisher, getNpcSide, npcBusy, peerNextPrompt]);
 
-  const submitPeerRound4FreeReply = useCallback(() => {
+  const submitPeerRound4Message = useCallback((message: string) => {
     const npc = epilogueNpcMap.peer_fisher;
     if (!npc || activePhase !== "peer_round4" || npcBusy) return;
-    const message = npcInput.trim();
-    if (!message) return;
+    const finalMessage = message.trim();
+    if (!finalMessage) return;
 
-    const classification = classifyPeerFreeReply(message, "round4");
+    const classification = classifyPeerFreeReply(finalMessage, "round4");
     const choiceId = classification.choiceId as PeerChoiceId;
 
     setNpcBusy(true);
-    setPendingUserMessage(message);
-    addTurn("我", message, "user");
+    setPendingUserMessage(finalMessage);
+    addTurn("我", finalMessage, "user");
 
     const nextScore = leakScore + classification.leakScore;
     setLeakScore(nextScore);
@@ -1240,10 +1276,13 @@ export function LearningWorkspace({
     getNpcSide,
     leakScore,
     npcBusy,
-    npcInput,
     peerFlow.round5.endings,
     peerFlow.round5.finalFeedbackByLevel,
   ]);
+
+  const submitPeerRound4FreeReply = useCallback(() => {
+    submitPeerRound4Message(npcInput);
+  }, [npcInput, submitPeerRound4Message]);
 
   const selectRound1Choice = (choiceId: PeerChoiceId) => {
     if (npcBusy || selectedRound1Option) return;
@@ -1857,60 +1896,6 @@ export function LearningWorkspace({
     stopVoice,
   ]);
 
-  useEffect(() => {
-    if (deviceMode !== "rokid") return;
-
-    const runCommand = (action: string | undefined) => {
-      switch (action) {
-        case "start":
-          if (introVisible) {
-            advanceIntroFromController();
-          } else {
-            setPaused(false);
-          }
-          break;
-        case "pause":
-          if (!introVisible && !done) {
-            setPaused((prev) => !prev);
-          }
-          break;
-        case "next":
-          if (introVisible) {
-            advanceIntroFromController();
-            break;
-          }
-          if (continueChoiceOrJump()) {
-            break;
-          }
-          window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " " }));
-          break;
-        case "home":
-          goHome();
-          break;
-        case "reset":
-          resetAll();
-          break;
-        case "reload":
-          window.location.reload();
-          break;
-        default:
-          break;
-      }
-    };
-
-    const onRokidCommand = (event: Event) => {
-      const customEvent = event as CustomEvent<{ action?: string }>;
-      runCommand(customEvent.detail?.action);
-    };
-
-    window.__TAOHUAYUAN_ROKID_COMMAND__ = (action: string) => runCommand(action);
-    window.addEventListener("rokid-command", onRokidCommand);
-    return () => {
-      window.removeEventListener("rokid-command", onRokidCommand);
-      delete window.__TAOHUAYUAN_ROKID_COMMAND__;
-    };
-  }, [advanceIntroFromController, continueChoiceOrJump, deviceMode, done, goHome, introVisible, resetAll]);
-
   const progressText = `${visited.length}/${bundle.scenes.length}`;
   const isRoleplayPhase = activePhase === "aqiao" || activePhase === "chief";
   const isPeerRound1 = activePhase === "peer_round1";
@@ -1960,7 +1945,7 @@ export function LearningWorkspace({
       : pendingNpcSpeechTask?.fullText ?? activeNpc?.openingLine ?? "";
   const activeSpeakerName = preferredDisplayTurn?.speaker ?? activeNpc?.name ?? "";
   const activeSpeakerRole = preferredDisplayTurn?.tone === "narration" ? "场景旁白" : activeNpc?.role ?? "";
-  const submitCurrentResponse = () => {
+  const submitCurrentResponse = useCallback(() => {
     if (isRoleplayPhase) {
       const presetMessage = selectedPresetReply ?? matchPresetReply(activeNpcId, activePhase, npcInput);
       void submitRoleplay(presetMessage ?? undefined);
@@ -1978,7 +1963,177 @@ export function LearningWorkspace({
     if (isPeerRound4) {
       submitPeerRound4FreeReply();
     }
-  };
+  }, [
+    activeNpcId,
+    activePhase,
+    isPeerOpenRound,
+    isPeerRound1,
+    isPeerRound4,
+    isRoleplayPhase,
+    npcInput,
+    selectedPresetReply,
+    submitPeerOpenRound,
+    submitPeerRound1FreeReply,
+    submitPeerRound4FreeReply,
+    submitRoleplay,
+  ]);
+
+  const submitRokidChoice = useCallback((index: number) => {
+    if (index < 0) return false;
+    if (activeCheckpoint) {
+      submitCheckpointChoice();
+      return true;
+    }
+    if (jump) {
+      moveScene(jump.nextSceneId);
+      return true;
+    }
+    if (!showManualInput || npcBusy || isPeerDone) return false;
+
+    if (isRoleplayPhase) {
+      const message = guideReplies[index];
+      if (!message) return false;
+      void submitRoleplay(message);
+      return true;
+    }
+    if (isPeerRound1) {
+      const option = peerFlow.round1.options[index];
+      if (!option) return false;
+      submitPeerRound1Message(option.text);
+      return true;
+    }
+    if (isPeerOpenRound) {
+      const message = guideReplies[index];
+      if (!message) return false;
+      void submitPeerOpenRound(message);
+      return true;
+    }
+    if (isPeerRound4) {
+      const option = peerFlow.round4.options[index];
+      if (!option) return false;
+      submitPeerRound4Message(option.text);
+      return true;
+    }
+    return false;
+  }, [
+    activeCheckpoint,
+    guideReplies,
+    isPeerDone,
+    isPeerOpenRound,
+    isPeerRound1,
+    isPeerRound4,
+    isRoleplayPhase,
+    jump,
+    moveScene,
+    npcBusy,
+    peerFlow.round1.options,
+    peerFlow.round4.options,
+    showManualInput,
+    submitCheckpointChoice,
+    submitPeerOpenRound,
+    submitPeerRound1Message,
+    submitPeerRound4Message,
+    submitRoleplay,
+  ]);
+
+  useEffect(() => {
+    if (deviceMode !== "rokid") return;
+
+    const choiceIndexFromAction = (value: string) => {
+      const match = value.match(/^(?:choice|option|reply|select)[:=_-]?([abc1230])$/);
+      if (!match) return null;
+      const token = match[1];
+      if (token === "a" || token === "1" || token === "0") return 0;
+      if (token === "b" || token === "2") return 1;
+      if (token === "c" || token === "3") return 2;
+      return null;
+    };
+
+    const runCommand = (action: string | undefined) => {
+      const normalized = action?.trim().toLowerCase().replace(/\s+/g, "");
+      if (!normalized) return;
+
+      const choiceIndex = choiceIndexFromAction(normalized);
+      if (choiceIndex !== null && submitRokidChoice(choiceIndex)) {
+        return;
+      }
+
+      switch (normalized) {
+        case "start":
+          if (introVisible) {
+            advanceIntroFromController();
+          } else {
+            setPaused(false);
+          }
+          break;
+        case "pause":
+          if (!introVisible && !done) {
+            setPaused((prev) => !prev);
+          }
+          break;
+        case "next":
+          if (introVisible) {
+            advanceIntroFromController();
+            break;
+          }
+          if (continueChoiceOrJump()) {
+            break;
+          }
+          window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " " }));
+          break;
+        case "home":
+          goHome();
+          break;
+        case "reset":
+          resetAll();
+          break;
+        case "reload":
+          window.location.reload();
+          break;
+        default:
+          break;
+      }
+    };
+
+    const onRokidCommand = (event: Event) => {
+      const customEvent = event as CustomEvent<{ action?: string }>;
+      runCommand(customEvent.detail?.action);
+    };
+
+    window.__TAOHUAYUAN_ROKID_COMMAND__ = (action: string) => runCommand(action);
+    window.addEventListener("rokid-command", onRokidCommand);
+    return () => {
+      window.removeEventListener("rokid-command", onRokidCommand);
+      delete window.__TAOHUAYUAN_ROKID_COMMAND__;
+    };
+  }, [
+    activeCheckpoint,
+    advanceIntroFromController,
+    continueChoiceOrJump,
+    deviceMode,
+    done,
+    goHome,
+    guideReplies,
+    introVisible,
+    isPeerDone,
+    isPeerOpenRound,
+    isPeerRound1,
+    isPeerRound4,
+    isRoleplayPhase,
+    jump,
+    moveScene,
+    npcBusy,
+    peerFlow.round1.options,
+    peerFlow.round4.options,
+    resetAll,
+    showManualInput,
+    submitCheckpointChoice,
+    submitPeerRound1Message,
+    submitPeerRound4Message,
+    submitRokidChoice,
+    submitPeerOpenRound,
+    submitRoleplay,
+  ]);
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-black" data-device-mode={deviceMode}>
