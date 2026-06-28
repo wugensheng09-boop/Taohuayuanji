@@ -6,6 +6,14 @@ import type { CSSProperties, PointerEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Flame, Settings, Sparkles, Trophy } from "lucide-react";
 
+import type { RokidRuntimeMode } from "@/lib/rokid-device";
+
+declare global {
+  interface Window {
+    __TAOHUAYUAN_ROKID_COMMAND__?: (action: string) => void;
+  }
+}
+
 type HomeProgress = {
   lessonId: string;
   sessionId: string;
@@ -96,7 +104,21 @@ function readProgress(lessonId: string): HomeProgress | null {
   }
 }
 
-function MenuPlaque({ item, disabled }: { item: MenuItem; disabled?: boolean }) {
+function withDeviceModeHref(href: string, deviceMode: RokidRuntimeMode): string {
+  if (deviceMode !== "rokid") return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}device=rokid`;
+}
+
+function MenuPlaque({
+  item,
+  disabled,
+  deviceMode,
+}: {
+  item: MenuItem;
+  disabled?: boolean;
+  deviceMode: RokidRuntimeMode;
+}) {
   const content = (
     <>
       <Image
@@ -129,7 +151,7 @@ function MenuPlaque({ item, disabled }: { item: MenuItem; disabled?: boolean }) 
 
   return (
     <Link
-      href={item.href}
+      href={withDeviceModeHref(item.href, deviceMode)}
       className={className}
       aria-label={`${item.label}，${item.description}`}
       data-cursor-target="menu"
@@ -144,10 +166,12 @@ export function TaohuayuanHomeClient({
   lessonId,
   sceneCount,
   taskCount,
+  deviceMode = "web",
 }: {
   lessonId: string;
   sceneCount: number;
   taskCount: number;
+  deviceMode?: RokidRuntimeMode;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [achievementOpen, setAchievementOpen] = useState(false);
@@ -175,6 +199,46 @@ export function TaohuayuanHomeClient({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (deviceMode !== "rokid") return;
+
+    const goToLearning = () => {
+      window.location.assign(`/learn/${lessonId}?device=rokid`);
+    };
+    const runCommand = (action: string | undefined) => {
+      switch (action) {
+        case "start":
+        case "next":
+          goToLearning();
+          break;
+        case "reset":
+          window.localStorage.removeItem(`tyy:progress:${lessonId}`);
+          window.localStorage.removeItem(`tyy:session:${lessonId}`);
+          window.location.assign("/?device=rokid");
+          break;
+        case "home":
+          window.location.assign("/?device=rokid");
+          break;
+        case "reload":
+          window.location.reload();
+          break;
+        default:
+          break;
+      }
+    };
+    const onRokidCommand = (event: Event) => {
+      const customEvent = event as CustomEvent<{ action?: string }>;
+      runCommand(customEvent.detail?.action);
+    };
+
+    window.__TAOHUAYUAN_ROKID_COMMAND__ = (action: string) => runCommand(action);
+    window.addEventListener("rokid-command", onRokidCommand);
+    return () => {
+      window.removeEventListener("rokid-command", onRokidCommand);
+      delete window.__TAOHUAYUAN_ROKID_COMMAND__;
+    };
+  }, [deviceMode, lessonId]);
 
   const updateCursorFromTarget = (target: EventTarget | null) => {
     const element = target instanceof Element ? target.closest<HTMLElement>("[data-cursor-target]") : null;
@@ -223,6 +287,7 @@ export function TaohuayuanHomeClient({
       data-cursor-pressed={cursor.pressed ? "true" : "false"}
       data-petals={petalsOn ? "on" : "off"}
       data-light={lightOn ? "on" : "off"}
+      data-device-mode={deviceMode}
       aria-label="入画文游首页"
       onPointerMove={handlePointerMove}
       onPointerDown={handlePointerDown}
@@ -308,7 +373,12 @@ export function TaohuayuanHomeClient({
 
         <div className="main-menu" aria-label="首页入口">
           {MENU_ITEMS.map((item) => (
-            <MenuPlaque key={item.label} item={item} disabled={item.requiresProgress && !hasProgress} />
+            <MenuPlaque
+              key={item.label}
+              item={item}
+              disabled={item.requiresProgress && !hasProgress}
+              deviceMode={deviceMode}
+            />
           ))}
         </div>
 

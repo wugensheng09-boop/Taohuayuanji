@@ -46,10 +46,14 @@ test("buildRokidLaunchUrl normalizes the WebView launch URL", async () => {
 
   assert.equal(
     buildRokidLaunchUrl("https://example.com/learn/taohuayuanji?resume=1"),
-    "https://example.com/learn/taohuayuanji?resume=1&device=rokid&autostart=1",
+    "https://example.com/learn/taohuayuanji?resume=1&device=rokid",
   );
   assert.equal(
     buildRokidLaunchUrl("https://example.com/learn/taohuayuanji?device=web&autostart=0"),
+    "https://example.com/learn/taohuayuanji?device=rokid",
+  );
+  assert.equal(
+    buildRokidLaunchUrl("https://example.com", { path: "/learn/taohuayuanji", autostart: true }),
     "https://example.com/learn/taohuayuanji?device=rokid&autostart=1",
   );
 });

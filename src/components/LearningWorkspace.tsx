@@ -98,6 +98,8 @@ const VOICE_MIN_GAP_MS = 320;
 const VOICE_PENDING_TIMEOUT_MS = 4200;
 const NPC_SPEECH_FALLBACK_MS = 2200;
 const NPC_SPEECH_MAX_BLOCK_MS = 35000;
+const ONE_SHOT_VIDEO_METADATA_TIMEOUT_MS = 30000;
+const ONE_SHOT_VIDEO_MAX_TIMEOUT_MS = 120000;
 const CHAT_REQUEST_TIMEOUT_MS = 20000;
 const TYPE_CHAR_BASE_MS = 62;
 const TYPE_PUNCT_DELAY_MS = 200;
@@ -438,6 +440,7 @@ export function LearningWorkspace({
   const ambientSecondaryRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const npcSpeechRef = useRef<HTMLAudioElement | null>(null);
+  const videoSfxRef = useRef<HTMLAudioElement | null>(null);
   const fadeJobsRef = useRef<Record<string, number | undefined>>({});
   const voiceTicketRef = useRef(0);
   const baseMixRef = useRef({
@@ -492,6 +495,15 @@ export function LearningWorkspace({
     (activeSpeechTurnId ? npcSpeechQueue.find((task) => task.turnId === activeSpeechTurnId) : undefined) ??
     npcSpeechQueue[0] ??
     null;
+
+  const markSceneVideoEnded = useCallback((videoKey: string) => {
+    const sfx = videoSfxRef.current;
+    if (sfx) {
+      sfx.pause();
+      sfx.currentTime = 0;
+    }
+    setVideoEndedByScene((prev) => (prev[videoKey] ? prev : { ...prev, [videoKey]: true }));
+  }, []);
 
   const addTurn = useCallback(
     (
@@ -647,7 +659,10 @@ export function LearningWorkspace({
 
   const tryResolveVoiceSrc = useCallback(async (voiceId: string): Promise<string | null> => {
     const base = `/audio/taohuayuanji/voice/${voiceId}`;
-    const candidates = [`${base}.mp3`, `${base}.MP3`, `${base}.wav`, `${base}.WAV`];
+    const mp3Candidates = voiceId.startsWith("village_")
+      ? [`${base}.mp3`, `${base}.MP3`]
+      : [`${base}.MP3`, `${base}.mp3`];
+    const candidates = [...mp3Candidates, `${base}.wav`, `${base}.WAV`];
     for (const src of candidates) {
       try {
         const r = await fetch(src, { method: "HEAD", cache: "no-store" });
@@ -876,11 +891,23 @@ export function LearningWorkspace({
     setIntroVisible(false);
   }, []);
 
+  const advanceIntroFromController = useCallback(() => {
+    if (introState === "transition") {
+      setIntroVisible(false);
+      return;
+    }
+    if (introState === "ready" || introState === "blocked") {
+      setIntroState("transition");
+      return;
+    }
+    setIntroState("ready");
+  }, [introState]);
+
   const goHome = useCallback(() => {
     if (typeof window !== "undefined") {
-      window.location.assign("/");
+      window.location.assign(deviceMode === "rokid" ? "/?device=rokid" : "/");
     }
-  }, []);
+  }, [deviceMode]);
 
   const closeNpcAndContinue = useCallback(() => {
     const shouldJumpToNextScene = activePhase === "peer_done" && Boolean(scene.nextSceneId);
@@ -901,6 +928,18 @@ export function LearningWorkspace({
     setActiveCheckpoint(null);
     setTimeout(() => advance(), 80);
   }, [advance]);
+
+  const continueChoiceOrJump = useCallback(() => {
+    if (activeCheckpoint) {
+      submitCheckpointChoice();
+      return true;
+    }
+    if (jump) {
+      moveScene(jump.nextSceneId);
+      return true;
+    }
+    return false;
+  }, [activeCheckpoint, jump, moveScene, submitCheckpointChoice]);
 
   const openNpcInteraction = useCallback(
     (interactionKey: string) => {
@@ -1438,6 +1477,8 @@ export function LearningWorkspace({
     voice.preload = "auto";
     const npcSpeech = new Audio();
     npcSpeech.preload = "auto";
+    const videoSfx = new Audio();
+    videoSfx.preload = "auto";
 
     const handleVoiceEnded = () => setVoiceActive(false);
     voice.addEventListener("ended", handleVoiceEnded);
@@ -1448,13 +1489,14 @@ export function LearningWorkspace({
     ambientSecondaryRef.current = ambientSecondary;
     voiceRef.current = voice;
     npcSpeechRef.current = npcSpeech;
+    videoSfxRef.current = videoSfx;
 
     return () => {
       Object.values(fadeJobs).forEach((job) => {
         if (job) window.clearInterval(job);
       });
 
-      [bgm, ambientPrimary, ambientSecondary, voice, npcSpeech].forEach((item) => {
+      [bgm, ambientPrimary, ambientSecondary, voice, npcSpeech, videoSfx].forEach((item) => {
         item.pause();
         item.removeAttribute("src");
         item.load();
@@ -1528,7 +1570,6 @@ export function LearningWorkspace({
     fadeTo("ambientSecondary", secondary, ambientSecondaryTarget, voiceActive ? 380 : 500);
   }, [activeNpcId, activePhase, done, fadeTo, introVisible, oneShotVideoPlaying, voiceActive]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (introVisible || done || !line) {
       stopVoice();
@@ -1626,19 +1667,26 @@ export function LearningWorkspace({
       stopVoice();
     };
   }, [done, introVisible, line, scene.lineVoiceOverrides, sceneId, stopVoice, tryResolveVoiceSrc]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
   useEffect(() => {
-    if (!showSceneVideo) return;
+    const sfx = videoSfxRef.current;
+    if (!showSceneVideo) {
+      if (sfx) {
+        sfx.pause();
+        sfx.currentTime = 0;
+      }
+      return;
+    }
     const video = sceneVideoRef.current;
     if (!video) return;
     const videoSrc = scene.backgroundVideo ?? "";
+    const audioSrc = scene.backgroundVideoAudio;
 
     if (scene.videoMode === "play_once_then_image") {
       const alreadyPlayingSameVideo =
         video.dataset.oneShotSrc === videoSrc && !video.ended && video.currentTime > 0;
       if (!alreadyPlayingSameVideo) {
         video.currentTime = 0;
+        if (sfx) sfx.currentTime = 0;
       }
       video.dataset.oneShotSrc = videoSrc;
     }
@@ -1647,7 +1695,85 @@ export function LearningWorkspace({
     if (p && typeof p.catch === "function") {
       p.catch(() => {});
     }
-  }, [scene.backgroundVideo, scene.videoMode, showSceneVideo, sceneId]);
+
+    if (sfx && audioSrc) {
+      if (sfx.dataset.trackSrc !== audioSrc) {
+        sfx.dataset.trackSrc = audioSrc;
+        sfx.src = audioSrc;
+        sfx.load();
+      }
+      sfx.loop = scene.videoMode !== "play_once_then_image";
+      sfx.volume = Math.max(0, Math.min(1, scene.backgroundVideoAudioVolume ?? 0.72));
+      if (Math.abs(sfx.currentTime - video.currentTime) > 0.35) {
+        sfx.currentTime = video.currentTime;
+      }
+      void sfx.play().catch(() => {});
+    } else if (sfx) {
+      sfx.pause();
+      sfx.currentTime = 0;
+    }
+
+    return () => {
+      if (!sfx) return;
+      sfx.pause();
+      sfx.currentTime = 0;
+    };
+  }, [
+    scene.backgroundVideo,
+    scene.backgroundVideoAudio,
+    scene.backgroundVideoAudioVolume,
+    scene.videoMode,
+    showSceneVideo,
+    sceneId,
+  ]);
+
+  useEffect(() => {
+    if (!showSceneVideo || scene.videoMode !== "play_once_then_image") return;
+    const video = sceneVideoRef.current;
+    if (!video) return;
+
+    let finished = false;
+    let timer: number | undefined;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (timer) window.clearTimeout(timer);
+      markSceneVideoEnded(sceneVideoStateKey);
+    };
+    const schedule = (durationMs: number) => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(finish, Math.min(durationMs, ONE_SHOT_VIDEO_MAX_TIMEOUT_MS));
+    };
+    const scheduleFromMetadata = () => {
+      const durationMs =
+        Number.isFinite(video.duration) && video.duration > 0
+          ? Math.max(9000, video.duration * 1000 + 3500)
+          : ONE_SHOT_VIDEO_METADATA_TIMEOUT_MS;
+      schedule(durationMs);
+    };
+    const onStalledEarly = () => {
+      if (video.currentTime < 0.35) schedule(9000);
+    };
+
+    video.addEventListener("loadedmetadata", scheduleFromMetadata);
+    video.addEventListener("durationchange", scheduleFromMetadata);
+    video.addEventListener("ended", finish);
+    video.addEventListener("error", finish);
+    video.addEventListener("stalled", onStalledEarly);
+    video.addEventListener("waiting", onStalledEarly);
+    scheduleFromMetadata();
+
+    return () => {
+      finished = true;
+      if (timer) window.clearTimeout(timer);
+      video.removeEventListener("loadedmetadata", scheduleFromMetadata);
+      video.removeEventListener("durationchange", scheduleFromMetadata);
+      video.removeEventListener("ended", finish);
+      video.removeEventListener("error", finish);
+      video.removeEventListener("stalled", onStalledEarly);
+      video.removeEventListener("waiting", onStalledEarly);
+    };
+  }, [markSceneVideoEnded, scene.videoMode, sceneVideoStateKey, showSceneVideo]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1655,7 +1781,13 @@ export function LearningWorkspace({
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      if (introVisible || done || jump || activeCheckpoint || spaceBlockedBySceneVideo) return;
+      if (introVisible || done) return;
+      if (activeCheckpoint || jump) {
+        event.preventDefault();
+        continueChoiceOrJump();
+        return;
+      }
+      if (spaceBlockedBySceneVideo) return;
 
       if (interactionActive) {
         if (!SPACE_SKIP_NO_API) return;
@@ -1708,6 +1840,7 @@ export function LearningWorkspace({
   }, [
     advance,
     activeCheckpoint,
+    continueChoiceOrJump,
     done,
     interactionActive,
     introVisible,
@@ -1728,7 +1861,7 @@ export function LearningWorkspace({
       switch (action) {
         case "start":
           if (introVisible) {
-            skipIntro();
+            advanceIntroFromController();
           } else {
             setPaused(false);
           }
@@ -1739,6 +1872,13 @@ export function LearningWorkspace({
           }
           break;
         case "next":
+          if (introVisible) {
+            advanceIntroFromController();
+            break;
+          }
+          if (continueChoiceOrJump()) {
+            break;
+          }
           window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " " }));
           break;
         case "home":
@@ -1766,7 +1906,7 @@ export function LearningWorkspace({
       window.removeEventListener("rokid-command", onRokidCommand);
       delete window.__TAOHUAYUAN_ROKID_COMMAND__;
     };
-  }, [deviceMode, done, goHome, introVisible, resetAll, skipIntro]);
+  }, [advanceIntroFromController, continueChoiceOrJump, deviceMode, done, goHome, introVisible, resetAll]);
 
   const progressText = `${visited.length}/${bundle.scenes.length}`;
   const isRoleplayPhase = activePhase === "aqiao" || activePhase === "chief";
@@ -1862,12 +2002,12 @@ export function LearningWorkspace({
           loop={scene.videoMode !== "play_once_then_image"}
           onEnded={() => {
             if (scene.videoMode === "play_once_then_image") {
-              setVideoEndedByScene((prev) => ({ ...prev, [sceneVideoStateKey]: true }));
+              markSceneVideoEnded(sceneVideoStateKey);
             }
           }}
           onError={() => {
             if (scene.videoMode === "play_once_then_image") {
-              setVideoEndedByScene((prev) => ({ ...prev, [sceneVideoStateKey]: true }));
+              markSceneVideoEnded(sceneVideoStateKey);
             }
           }}
         />
@@ -1918,7 +2058,7 @@ export function LearningWorkspace({
         </header>
 
         {!interactionActive ? (
-          <div className="relative flex flex-1 items-end px-4 pb-7 md:px-12 md:pb-10 pointer-events-none">
+          <div className="story-caption-shell relative flex flex-1 items-end px-4 pb-7 md:px-12 md:pb-10 pointer-events-none">
             <article className={`story-caption story-caption--${artTone}`}>
               <div className="story-caption__shine" />
               
