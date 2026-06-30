@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
 import { evaluateInterrogationAnswer } from "@/lib/interrogation-evaluator";
+import type { RokidRuntimeMode } from "@/lib/rokid-device";
 import type { InterrogationConfig, InterrogationEvalResult, InterrogationTurnConfig } from "@/types/interrogation";
 import type { LessonBundle } from "@/types/lesson";
 
@@ -240,9 +241,11 @@ function SidePanel({
 export function InterrogationWorkspace({
   bundle,
   config,
+  deviceMode = "web",
 }: {
   bundle: LessonBundle;
   config: InterrogationConfig;
+  deviceMode?: RokidRuntimeMode;
 }) {
   const [sessionId] = useState(() => uid("guard"));
   const [turnIndex, setTurnIndex] = useState(0);
@@ -261,6 +264,7 @@ export function InterrogationWorkspace({
   const allEvidence = useMemo(() => [...new Set(records.flatMap((record) => record.result.matchedEvidence))], [records]);
   const allLeaks = useMemo(() => [...new Set(records.flatMap((record) => record.result.matchedLeakClues))], [records]);
   const canSubmit = answer.trim().length > 0 && !busy && !done;
+  const deviceQuery = deviceMode === "rokid" ? "?device=rokid" : "";
 
   const reset = () => {
     setTurnIndex(0);
@@ -359,17 +363,18 @@ export function InterrogationWorkspace({
 
   return (
     <main
-      className="relative min-h-screen overflow-x-hidden bg-[#050403] bg-cover bg-left bg-no-repeat text-[#f8ecd8] lg:h-screen lg:overflow-hidden"
+      data-device-mode={deviceMode}
+      className="guard-shell relative min-h-screen overflow-x-hidden bg-[#050403] bg-cover bg-left bg-no-repeat text-[#f8ecd8] lg:h-screen lg:overflow-hidden"
       style={{ backgroundImage: `url("${MAGISTRATE_ART}")`, backgroundPosition: "left center" }}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_42%,rgba(234,192,126,0.06),transparent_28%),radial-gradient(circle_at_78%_22%,rgba(37,120,102,0.08),transparent_32%),linear-gradient(90deg,rgba(4,5,4,0.02)_0%,rgba(4,5,4,0.04)_34%,rgba(3,6,6,0.3)_62%,rgba(3,4,4,0.68)_100%),linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.06)_46%,rgba(0,0,0,0.56)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-60 bg-gradient-to-t from-[#050403]/92 via-[#050403]/38 to-transparent" />
 
-      <div className="relative z-10 flex min-h-screen flex-col px-4 py-4 md:px-6 lg:h-screen lg:min-h-0 lg:px-8 lg:py-6">
-        <header className="pointer-events-auto mx-auto flex w-full max-w-[100rem] shrink-0 items-center justify-between gap-3 rounded-lg border border-[#d8b176]/18 bg-[#050504]/46 px-3 py-2 shadow-[0_16px_50px_rgba(0,0,0,0.28)] backdrop-blur-xl md:px-4">
+      <div className="guard-frame relative z-10 flex min-h-screen flex-col px-4 py-4 md:px-6 lg:h-screen lg:min-h-0 lg:px-8 lg:py-6">
+        <header className="guard-header pointer-events-auto mx-auto flex w-full max-w-[100rem] shrink-0 items-center justify-between gap-3 rounded-lg border border-[#d8b176]/18 bg-[#050504]/46 px-3 py-2 shadow-[0_16px_50px_rgba(0,0,0,0.28)] backdrop-blur-xl md:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <Link
-              href="/"
+              href={`/${deviceQuery}`}
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#d8b98f]/34 bg-black/34 text-[#f7e8cd] transition hover:border-[#d8b98f]/75 hover:bg-[#d8b98f]/10"
               aria-label="返回首页"
             >
@@ -403,7 +408,7 @@ export function InterrogationWorkspace({
               <span className="hidden sm:inline">规则</span>
             </button>
             <Link
-              href={`/lesson/${bundle.lesson.lessonId}`}
+              href={`/lesson/${bundle.lesson.lessonId}${deviceQuery}`}
               className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-transparent px-2.5 text-sm text-[#d8c2a0] transition hover:border-[#d8b176]/30 hover:bg-white/5"
             >
               <FileText size={17} />
@@ -412,8 +417,8 @@ export function InterrogationWorkspace({
           </nav>
         </header>
 
-        <section className="mx-auto grid w-full max-w-[100rem] flex-1 gap-4 py-4 lg:min-h-0 lg:grid-cols-[minmax(14rem,1fr)_minmax(27rem,32rem)_15rem] lg:items-end xl:grid-cols-[minmax(28rem,1fr)_minmax(30rem,31rem)_16rem] 2xl:grid-cols-[minmax(34rem,1fr)_minmax(32rem,36rem)_17rem]">
-          <aside className="pointer-events-none relative hidden min-h-[calc(100vh-8.5rem)] self-stretch lg:block">
+        <section className="guard-layout mx-auto grid w-full max-w-[100rem] flex-1 gap-4 py-4 lg:min-h-0 lg:grid-cols-[minmax(14rem,1fr)_minmax(27rem,32rem)_15rem] lg:items-end xl:grid-cols-[minmax(28rem,1fr)_minmax(30rem,31rem)_16rem] 2xl:grid-cols-[minmax(34rem,1fr)_minmax(32rem,36rem)_17rem]">
+          <aside className="guard-left pointer-events-none relative hidden min-h-[calc(100vh-8.5rem)] self-stretch lg:block">
             <div className="absolute left-0 top-[14%] rounded-lg border border-[#d8b176]/32 bg-[#130e09]/62 px-3 py-4 text-center shadow-[0_18px_44px_rgba(0,0,0,0.34)] backdrop-blur-md">
               <p className="text-xs tracking-[0.22em] text-[#d6b27c]">武陵县令</p>
               <p className="mt-2 font-serif text-xl text-[#fff1d2] [writing-mode:vertical-rl]">崔判官</p>
@@ -426,10 +431,10 @@ export function InterrogationWorkspace({
             </div>
           </aside>
 
-          <section className="pointer-events-auto flex min-h-0 flex-col justify-end gap-3 lg:pb-7">
+          <section className="guard-main-panel pointer-events-auto flex min-h-0 flex-col justify-end gap-3 lg:pb-7">
             {!done ? (
-              <div className="overflow-hidden rounded-lg border border-[#d8b176]/26 bg-[#080806]/64 shadow-[0_22px_70px_rgba(0,0,0,0.46),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl">
-                <div className="border-b border-[#d8b176]/16 bg-[radial-gradient(circle_at_12%_0%,rgba(216,177,118,0.16),transparent_34%)] p-4">
+              <div className="guard-card overflow-hidden rounded-lg border border-[#d8b176]/26 bg-[#080806]/64 shadow-[0_22px_70px_rgba(0,0,0,0.46),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl">
+                <div className="guard-card-prompt border-b border-[#d8b176]/16 bg-[radial-gradient(circle_at_12%_0%,rgba(216,177,118,0.16),transparent_34%)] p-4">
                   <p className="font-serif text-4xl leading-none text-[#d8b176]/78">“</p>
                   <p className="mt-[-0.6rem] text-xs leading-6 text-[#d9c8ad]">
                     {turn.speakerName}问：{turn.followup}
@@ -439,13 +444,13 @@ export function InterrogationWorkspace({
                   </p>
                 </div>
 
-                <div className="grid gap-3 border-b border-[#d8b176]/14 p-3 md:grid-cols-2">
+                <div className="guard-stat-grid grid gap-3 border-b border-[#d8b176]/14 p-3 md:grid-cols-2">
                   <StatPanel label="可信度" value={credibility} kind="credibility" note="开局 50；回答有据且守口会升高，含糊或自相矛盾会降低。" />
                   <StatPanel label="泄密风险" value={leakRisk} kind="risk" note="开局 0；说出入口、水路、步数、标记等可复寻线索会升高。" />
                 </div>
 
                 {lastResult ? (
-                  <div className="grid gap-3 border-b border-[#d8b176]/14 bg-black/16 p-3 md:grid-cols-[minmax(0,1fr)_13rem]">
+                  <div className="guard-feedback grid gap-3 border-b border-[#d8b176]/14 bg-black/16 p-3 md:grid-cols-[minmax(0,1fr)_13rem]">
                     <div>
                       <p className="text-sm leading-7 text-[#f4e4ca]">{lastResult.reply}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -465,7 +470,7 @@ export function InterrogationWorkspace({
                   </div>
                 ) : null}
 
-                <div>
+                <div className="guard-answer-panel">
                   <div className="flex items-center justify-between gap-3 border-b border-[#d8b176]/16 px-4 py-3">
                     <p className="flex items-center gap-2 text-sm font-semibold tracking-[0.16em] text-[#e7c68f]">
                       <Send size={16} />
@@ -483,7 +488,7 @@ export function InterrogationWorkspace({
                     placeholder="在此输入你的回答……"
                     className="h-28 w-full resize-none border-0 bg-black/12 px-4 py-3 text-base leading-7 text-[#fff7e8] outline-none placeholder:text-[#8f806c] disabled:cursor-wait disabled:opacity-70"
                   />
-                  <div className="grid gap-2 border-t border-[#d8b176]/14 px-4 py-3">
+                  <div className="guard-quick-replies grid gap-2 border-t border-[#d8b176]/14 px-4 py-3">
                     {QUICK_REPLY_GROUPS.map((group) => (
                       <div key={group.label} className="flex flex-wrap items-center gap-2">
                         <span className="mr-1 min-w-[4.5rem] text-xs font-semibold text-[#d0b287]">{group.label}</span>
@@ -502,7 +507,7 @@ export function InterrogationWorkspace({
                     ))}
                     <span className="ml-auto font-mono text-xs text-[#9c8c75]">{answer.length}/360</span>
                   </div>
-                  <div className="flex flex-col items-center gap-2 border-t border-[#d8b176]/12 px-4 py-3">
+                  <div className="guard-submit-panel flex flex-col items-center gap-2 border-t border-[#d8b176]/12 px-4 py-3">
                     <button
                       type="button"
                       data-testid="guard-submit"
@@ -518,7 +523,7 @@ export function InterrogationWorkspace({
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-[#d8b176]/24 bg-[#080806]/68 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.42)] backdrop-blur-2xl">
+              <div className="guard-ending-card rounded-lg border border-[#d8b176]/24 bg-[#080806]/68 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.42)] backdrop-blur-2xl">
                 <div className="mb-5 flex items-center gap-3 text-[#d8b98f]">
                   {ending.id === "safe" ? <ShieldCheck size={30} /> : <AlertTriangle size={30} />}
                   <span className="text-xs font-semibold tracking-[0.22em]">最终判定</span>
@@ -538,7 +543,7 @@ export function InterrogationWorkspace({
                     再盘一局
                   </button>
                   <Link
-                    href="/learn/taohuayuanji"
+                    href={`/learn/taohuayuanji${deviceQuery}`}
                     className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-[#d8b98f]/35 bg-[#d8b98f]/10 px-5 text-sm font-semibold text-[#f4e2c4] transition hover:border-[#d8b98f]/70 hover:bg-[#d8b98f]/16"
                   >
                     <CheckCircle2 size={18} />
@@ -549,7 +554,7 @@ export function InterrogationWorkspace({
             )}
           </section>
 
-          <aside className="pointer-events-auto grid content-start gap-3 lg:max-h-[calc(100vh-7.5rem)] lg:overflow-y-auto lg:pr-1">
+          <aside className="guard-side pointer-events-auto grid content-start gap-3 lg:max-h-[calc(100vh-7.5rem)] lg:overflow-y-auto lg:pr-1">
             <SidePanel title="已稳住的证词" icon={<ShieldCheck size={17} />} count={`${Math.min(4, allEvidence.length)}/4`}>
               <div className="space-y-2">
                 {allEvidence.length > 0 ? (
