@@ -791,3 +791,177 @@ a {
   transform: translateY(1.4rem) scale(0.92);
   transform-origin: bottom center;
 }
+
+[data-device-mode="rokid"].guard-shell {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+  background-position: center center !important;
+}
+
+[data-device-mode="rokid"] .guard-frame {
+  height: 100vh;
+  min-height: 0;
+  padding: var(--rokid-safe-y) var(--rokid-safe-x) calc(var(--rokid-safe-y) + 3.6rem);
+}
+
+[data-device-mode="rokid"] .guard-header {
+  max-width: min(82rem, calc(100vw - var(--rokid-safe-x) * 2));
+  padding: 0.55rem 0.75rem;
+  border-color: rgba(216, 177, 118, 0.28);
+  background: linear-gradient(180deg, rgba(7, 6, 4, 0.78), rgba(5, 5, 4, 0.62));
+}
+
+[data-device-mode="rokid"] .guard-header h1 {
+  font-size: clamp(1.35rem, 2.6vw, 2.35rem);
+  line-height: 1.08;
+}
+
+[data-device-mode="rokid"] .guard-header p {
+  display: none;
+}
+
+[data-device-mode="rokid"] .guard-header nav {
+  gap: 0.25rem;
+}
+
+[data-device-mode="rokid"] .guard-header nav button,
+[data-device-mode="rokid"] .guard-header nav a {
+  min-height: 2.35rem;
+  padding-inline: 0.65rem;
+  background: rgba(0, 0, 0, 0.22);
+  border-color: rgba(216, 177, 118, 0.18);
+}
+
+[data-device-mode="rokid"] .guard-layout {
+  width: min(84rem, calc(100vw - var(--rokid-safe-x) * 2));
+  max-width: none;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(12.5rem, 16rem);
+  align-items: end;
+  gap: clamp(0.75rem, 1.4vw, 1.2rem);
+  padding-block: 0.75rem 0;
+}
+
+[data-device-mode="rokid"] .guard-left {
+  display: none;
+}
+
+[data-device-mode="rokid"] .guard-main-panel {
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+[data-device-mode="rokid"] .guard-card,
+[data-device-mode="rokid"] .guard-ending-card {
+  max-height: calc(100vh - var(--rokid-safe-y) * 2 - 7.4rem);
+  overflow-y: auto;
+  border-color: rgba(216, 177, 118, 0.34);
+  background: linear-gradient(180deg, rgba(8, 8, 6, 0.82), rgba(5, 5, 4, 0.76));
+}
+
+[data-device-mode="rokid"] .guard-card-prompt {
+  padding: 0.8rem 1rem;
+}
+
+[data-device-mode="rokid"] .guard-card-prompt p:first-child {
+  font-size: 2rem;
+}
+
+[data-device-mode="rokid"] .guard-card-prompt p:last-child {
+  margin-top: 0.2rem;
+  font-size: clamp(1.1rem, 2vw, 1.55rem);
+  line-height: 1.36;
+}
+
+[data-device-mode="rokid"] .guard-stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding: 0.65rem;
+}
+
+[data-device-mode="rokid"] .guard-stat-grid section {
+  padding: 0.65rem;
+}
+
+[data-device-mode="rokid"] .guard-stat-grid section > p {
+  display: none;
+}
+
+[data-device-mode="rokid"] .guard-stat-grid section p,
+[data-device-mode="rokid"] .guard-stat-grid section span {
+  line-height: 1.35;
+}
+
+[data-device-mode="rokid"] .guard-feedback {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0.65rem 0.85rem;
+}
+
+[data-device-mode="rokid"] .guard-answer-panel textarea {
+  height: 4.7rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+[data-device-mode="rokid"] .guard-quick-replies {
+  max-height: 4.6rem;
+  overflow-y: auto;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+}
+
+[data-device-mode="rokid"] .guard-quick-replies > div {
+  gap: 0.35rem;
+}
+
+[data-device-mode="rokid"] .guard-quick-replies span {
+  min-width: 3.8rem;
+}
+
+[data-device-mode="rokid"] .guard-quick-replies button {
+  min-height: 1.85rem;
+  padding: 0.2rem 0.62rem;
+  font-size: 0.72rem;
+}
+
+[data-device-mode="rokid"] .guard-submit-panel {
+  padding: 0.45rem 0.85rem;
+}
+
+[data-device-mode="rokid"] .guard-submit-panel button {
+  min-height: 2.45rem;
+  max-width: 16rem;
+  font-size: 1.05rem;
+  letter-spacing: 0.18em;
+}
+
+[data-device-mode="rokid"] .guard-side {
+  align-self: end;
+  max-height: calc(100vh - var(--rokid-safe-y) * 2 - 8rem);
+  overflow-y: auto;
+  gap: 0.55rem;
+  padding-right: 0;
+}
+
+[data-device-mode="rokid"] .guard-side section {
+  padding: 0.65rem;
+  border-color: rgba(216, 170, 109, 0.22);
+  background: rgba(7, 8, 7, 0.7);
+}
+
+[data-device-mode="rokid"] .guard-side section:nth-of-type(3) {
+  display: none;
+}
+
+[data-device-mode="rokid"] .guard-side h2 {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+[data-device-mode="rokid"] .guard-side p,
+[data-device-mode="rokid"] .guard-side article {
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
