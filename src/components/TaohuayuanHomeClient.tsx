@@ -177,9 +177,10 @@ export function TaohuayuanHomeClient({
   const [achievementOpen, setAchievementOpen] = useState(false);
   const [petalsOn, setPetalsOn] = useState(true);
   const [lightOn, setLightOn] = useState(true);
-  const [progress] = useState<HomeProgress | null>(() => readProgress(lessonId));
+  const [progress, setProgress] = useState<HomeProgress | null>(null);
   const [cursor, setCursor] = useState<CursorState>({ mode: "idle", label: "", pressed: false });
   const cursorResetRef = useRef<number | null>(null);
+  const progressHydratedRef = useRef(false);
 
   const completedCount = Math.min(sceneCount, progress?.visitedScenes.length ?? 0);
   const hasProgress = Boolean(progress && completedCount > 0);
@@ -199,6 +200,13 @@ export function TaohuayuanHomeClient({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (progressHydratedRef.current) return;
+    progressHydratedRef.current = true;
+    const nextProgress = readProgress(lessonId);
+    window.setTimeout(() => setProgress(nextProgress), 0);
+  }, [lessonId]);
 
   useEffect(() => {
     if (deviceMode !== "rokid") return;

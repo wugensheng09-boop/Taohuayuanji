@@ -13,8 +13,9 @@ import {
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { SpeechInputButton } from "@/components/SpeechInputButton";
 import { evaluateInterrogationAnswer } from "@/lib/interrogation-evaluator";
 import type { RokidRuntimeMode } from "@/lib/rokid-device";
 import type { InterrogationConfig, InterrogationEvalResult, InterrogationTurnConfig } from "@/types/interrogation";
@@ -258,6 +259,8 @@ export function InterrogationWorkspace({
   const [judgeStage, setJudgeStage] = useState("");
   const [rulesOpen, setRulesOpen] = useState(false);
   const [done, setDone] = useState(false);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const requestTokenRef = useRef(0);
 
   const turn = config.turns[turnIndex] ?? config.turns[config.turns.length - 1];
   const ending = useMemo(() => chooseEnding(config, credibility, leakRisk), [config, credibility, leakRisk]);
@@ -266,7 +269,10 @@ export function InterrogationWorkspace({
   const canSubmit = answer.trim().length > 0 && !busy && !done;
   const deviceQuery = deviceMode === "rokid" ? "?device=rokid" : "";
 
-  const reset = () => {
+  const reset = useCallback(() => {
+    requestTokenRef.current += 1;
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
     setTurnIndex(0);
     setAnswer("");
     setCredibility(config.startingCredibility);
@@ -277,14 +283,14 @@ export function InterrogationWorkspace({
     setJudgeStage("");
     setRulesOpen(false);
     setDone(false);
-  };
+  }, [config.startingCredibility, config.startingLeakRisk]);
 
   const handleQuickReply = (reply: string) => {
     if (busy || done) return;
     setAnswer((current) => (current.trim() ? `${current.trim()}，${reply}` : reply));
   };
 
-  const commitResult = (trimmed: string, result: InterrogationEvalResult) => {
+  const commitResult = useCallback((trimmed: string, result: InterrogationEvalResult) => {
     setCredibility((value) => clampScore(value + result.credibilityDelta));
     setLeakRisk((value) => clampScore(value + result.leakRiskDelta));
     setRecords((items) => [...items, { turn, answer: trimmed, result }]);
@@ -296,15 +302,18 @@ export function InterrogationWorkspace({
     } else {
       setTurnIndex((value) => value + 1);
     }
-  };
+  }, [config.turns.length, turn, turnIndex]);
 
-  const submitAnswer = async () => {
+  const submitAnswer = useCallback(async () => {
     const trimmed = answer.trim();
     if (!trimmed || !turn || busy || done) return;
 
     setBusy(true);
     setJudgeStage("正在判读证据");
     const controller = new AbortController();
+    const token = requestTokenRef.current + 1;
+    requestTokenRef.current = token;
+    requestControllerRef.current = controller;
     const stageTimers = [
       window.setTimeout(() => setJudgeStage("正在比对原文线索"), 1800),
       window.setTimeout(() => setJudgeStage("远端判定较慢，准备本地兜底"), 6200),
@@ -341,8 +350,10 @@ export function InterrogationWorkspace({
         stageFeedback: data.stageFeedback?.length ? data.stageFeedback : fallbackResult(turn).stageFeedback,
       };
 
+      if (requestTokenRef.current !== token) return;
       commitResult(trimmed, result);
     } catch (error) {
+      if (requestTokenRef.current !== token) return;
       const localResult = evaluateInterrogationAnswer(config, turn, trimmed);
       const result: InterrogationEvalResult = {
         ...localResult,
@@ -356,10 +367,95 @@ export function InterrogationWorkspace({
       commitResult(trimmed, result);
     } finally {
       stageTimers.forEach((timer) => window.clearTimeout(timer));
-      setJudgeStage("");
-      setBusy(false);
+      if (requestTokenRef.current === token) {
+        requestControllerRef.current = null;
+        setJudgeStage("");
+        setBusy(false);
+      }
     }
-  };
+  }, [answer, busy, commitResult, config, done, sessionId, turn]);
+
+  const skipCurrentTurn = useCallback(() => {
+    if (!turn || done) return;
+    requestTokenRef.current += 1;
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+    const safeAnswer = answer.trim() || "暂且避开这个问题，不交代路径。";
+    const localResult = evaluateInterrogationAnswer(config, turn, safeAnswer);
+    commitResult(safeAnswer, {
+      ...localResult,
+      stageFeedback: [...localResult.stageFeedback, "已跳过当前盘问，使用本地安全判定继续流程。"],
+    });
+    setJudgeStage("");
+    setBusy(false);
+  }, [answer, commitResult, config, done, turn]);
+
+  useEffect(() => {
+    if (deviceMode !== "rokid") return;
+
+    const quickReplies = QUICK_REPLY_GROUPS.flatMap((group) => group.items);
+    const choiceIndexFromAction = (value: string) => {
+      const match = value.match(/^(?:choice|option|reply|select)[:=_-]?([abc1230])$/);
+      if (!match) return null;
+      const token = match[1];
+      if (token === "a" || token === "1" || token === "0") return 0;
+      if (token === "b" || token === "2") return 1;
+      if (token === "c" || token === "3") return 2;
+      return null;
+    };
+
+    const runCommand = (action: string | undefined) => {
+      const normalized = action?.trim().toLowerCase().replace(/\s+/g, "");
+      if (!normalized) return;
+
+      const choiceIndex = choiceIndexFromAction(normalized);
+      if (choiceIndex !== null) {
+        const reply = quickReplies[choiceIndex];
+        if (reply && !busy && !done) {
+          setAnswer((current) => (current.trim() ? `${current.trim()}，${reply}` : reply));
+        }
+        return;
+      }
+
+      switch (normalized) {
+        case "start":
+        case "next":
+          if (canSubmit) {
+            void submitAnswer();
+          } else {
+            skipCurrentTurn();
+          }
+          break;
+        case "skip":
+        case "fallback":
+          skipCurrentTurn();
+          break;
+        case "reset":
+          reset();
+          break;
+        case "home":
+          window.location.assign("/?device=rokid");
+          break;
+        case "reload":
+          window.location.reload();
+          break;
+        default:
+          break;
+      }
+    };
+
+    const onRokidCommand = (event: Event) => {
+      const customEvent = event as CustomEvent<{ action?: string }>;
+      runCommand(customEvent.detail?.action);
+    };
+
+    window.__TAOHUAYUAN_ROKID_COMMAND__ = (action: string) => runCommand(action);
+    window.addEventListener("rokid-command", onRokidCommand);
+    return () => {
+      window.removeEventListener("rokid-command", onRokidCommand);
+      delete window.__TAOHUAYUAN_ROKID_COMMAND__;
+    };
+  }, [busy, canSubmit, deviceMode, done, reset, skipCurrentTurn, submitAnswer]);
 
   return (
     <main
@@ -488,6 +584,25 @@ export function InterrogationWorkspace({
                     placeholder="在此输入你的回答……"
                     className="h-28 w-full resize-none border-0 bg-black/12 px-4 py-3 text-base leading-7 text-[#fff7e8] outline-none placeholder:text-[#8f806c] disabled:cursor-wait disabled:opacity-70"
                   />
+                  <div className="guard-voice-row flex flex-wrap items-center justify-between gap-2 border-t border-[#d8b176]/14 px-4 py-3">
+                    <SpeechInputButton
+                      value={answer}
+                      onChange={setAnswer}
+                      disabled={busy || done}
+                      maxLength={360}
+                      data-testid="guard-speech"
+                      className="min-h-10 border-[#d8b176]/28 bg-black/28 px-3 text-sm text-[#ead5b0] hover:border-[#d8b176]/60 hover:bg-[#d8b176]/10"
+                    />
+                    <button
+                      type="button"
+                      data-testid="guard-skip"
+                      onClick={skipCurrentTurn}
+                      disabled={done}
+                      className="inline-flex min-h-10 items-center rounded-lg border border-[#d8b176]/20 bg-black/22 px-3 text-sm text-[#cdbb9d] transition hover:border-[#d8b176]/52 hover:bg-[#d8b176]/10 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      跳过当前盘问
+                    </button>
+                  </div>
                   <div className="guard-quick-replies grid gap-2 border-t border-[#d8b176]/14 px-4 py-3">
                     {QUICK_REPLY_GROUPS.map((group) => (
                       <div key={group.label} className="flex flex-wrap items-center gap-2">

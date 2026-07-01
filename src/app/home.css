@@ -886,6 +886,81 @@
   }
 }
 
+.menu-shell[data-device-mode="rokid"] {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.menu-shell[data-device-mode="rokid"] .status-bar {
+  top: 1.05rem;
+  right: 5.2rem;
+  min-height: 2.45rem;
+  padding: 0 0.82rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .status-bar span {
+  gap: 0.32rem;
+  font-size: 0.82rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .status-bar span + span {
+  margin-left: 0.65rem;
+  padding-left: 0.7rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .status-bar em {
+  font-size: 0.92rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .menu-stage {
+  min-height: 100dvh;
+  padding: 2rem 0 1.5rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .title-lockup {
+  width: min(34rem, 48vw);
+}
+
+.menu-shell[data-device-mode="rokid"] .title-lockup::before {
+  inset: -1.4rem 3rem 1.8rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .lesson-title {
+  gap: 0.72rem;
+  margin-top: -0.55rem;
+  font-size: 1.34rem;
+  letter-spacing: 0.2em;
+}
+
+.menu-shell[data-device-mode="rokid"] .main-menu {
+  width: min(20.5rem, 52vw);
+  gap: 0.28rem;
+  margin-top: 1.05rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .menu-card-text {
+  font-size: 1.52rem;
+  letter-spacing: 0.2em;
+  padding-left: 0.2em;
+}
+
+.menu-shell[data-device-mode="rokid"] .side-tools {
+  top: 4.55rem;
+  right: 0.9rem;
+  gap: 0.58rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .side-tools button {
+  width: 3.05rem;
+  min-height: 3.05rem;
+  font-size: 0.66rem;
+}
+
+.menu-shell[data-device-mode="rokid"] .menu-quote {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .menu-bg {
     background-position: center;
