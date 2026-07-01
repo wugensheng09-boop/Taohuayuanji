@@ -856,8 +856,29 @@ a {
 [data-device-mode="rokid"] .guard-ending-card {
   max-height: calc(100vh - var(--rokid-safe-y) * 2 - 7.4rem);
   overflow-y: auto;
+  scrollbar-color: rgba(216, 177, 118, 0.42) rgba(0, 0, 0, 0.18);
+  scrollbar-width: thin;
   border-color: rgba(216, 177, 118, 0.34);
   background: linear-gradient(180deg, rgba(8, 8, 6, 0.82), rgba(5, 5, 4, 0.76));
+}
+
+[data-device-mode="rokid"] .guard-card::-webkit-scrollbar,
+[data-device-mode="rokid"] .guard-ending-card::-webkit-scrollbar,
+[data-device-mode="rokid"] .guard-feedback::-webkit-scrollbar {
+  width: 0.35rem;
+}
+
+[data-device-mode="rokid"] .guard-card::-webkit-scrollbar-track,
+[data-device-mode="rokid"] .guard-ending-card::-webkit-scrollbar-track,
+[data-device-mode="rokid"] .guard-feedback::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+[data-device-mode="rokid"] .guard-card::-webkit-scrollbar-thumb,
+[data-device-mode="rokid"] .guard-ending-card::-webkit-scrollbar-thumb,
+[data-device-mode="rokid"] .guard-feedback::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(216, 177, 118, 0.42);
 }
 
 [data-device-mode="rokid"] .guard-card-prompt {
@@ -895,21 +916,35 @@ a {
 
 [data-device-mode="rokid"] .guard-feedback {
   grid-template-columns: minmax(0, 1fr);
+  max-height: 4.5rem;
+  overflow-y: auto;
   padding: 0.65rem 0.85rem;
 }
 
 [data-device-mode="rokid"] .guard-answer-panel textarea {
-  height: 4.7rem;
+  height: 3.9rem;
   padding: 0.6rem 0.9rem;
   font-size: 1rem;
   line-height: 1.55;
 }
 
+[data-device-mode="rokid"] .guard-voice-row {
+  gap: 0.35rem;
+  padding: 0.35rem 0.85rem;
+}
+
+[data-device-mode="rokid"] .guard-voice-row button {
+  min-height: 2rem;
+  padding-inline: 0.65rem;
+  font-size: 0.72rem;
+}
+
 [data-device-mode="rokid"] .guard-quick-replies {
-  max-height: 4.6rem;
+  display: none;
+  max-height: 3.55rem;
   overflow-y: auto;
   gap: 0.35rem;
-  padding: 0.45rem 0.85rem;
+  padding: 0.35rem 0.85rem;
 }
 
 [data-device-mode="rokid"] .guard-quick-replies > div {

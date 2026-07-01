@@ -122,6 +122,7 @@ class MainActivity : Activity() {
             addView(button("Game: Choice A") { sendGameCommand("choice:a") })
             addView(button("Game: Choice B") { sendGameCommand("choice:b") })
             addView(button("Game: Choice C") { sendGameCommand("choice:c") })
+            addView(button("Game: Skip / Unstick") { sendGameCommand("skip") })
             addView(button("Game: Pause") { sendGameCommand("pause") })
             addView(button("Game: Reset") { sendGameCommand("reset") })
             addView(button("Game: Reload") { sendGameCommand("reload") })

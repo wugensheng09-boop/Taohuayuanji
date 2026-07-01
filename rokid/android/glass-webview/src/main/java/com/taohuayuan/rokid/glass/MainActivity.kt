@@ -3,9 +3,13 @@ package com.taohuayuan.rokid.glass
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -24,6 +28,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.rokid.cxr.CXRServiceBridge
 import com.rokid.cxr.Caps
+import org.json.JSONObject
+import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var webView: WebView
@@ -31,6 +37,8 @@ class MainActivity : Activity() {
     private val cxrBridge = CXRServiceBridge()
     private val clientCommandKey = "rk_custom_client"
     private val statusReplyKey = "taohuayuan_game_status"
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var speechRequestId: String = ""
 
     private val bridgeStatusListener = object : CXRServiceBridge.StatusListener {
         override fun onConnected(p0: String?, p1: String?, p2: Int) {
@@ -111,6 +119,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        stopSpeechRecognition()
         webView.destroy()
         super.onDestroy()
     }
@@ -206,10 +215,106 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun startSpeechRecognition(requestId: String) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1002)
+            sendSpeechResult(requestId, "", true, "microphone-permission")
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            sendSpeechResult(requestId, "", true, "speech-unavailable")
+            return
+        }
+
+        stopSpeechRecognition()
+        speechRequestId = requestId
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer = recognizer
+        recognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                showStatus("Listening")
+            }
+
+            override fun onBeginningOfSpeech() = Unit
+            override fun onRmsChanged(rmsdB: Float) = Unit
+            override fun onBufferReceived(buffer: ByteArray?) = Unit
+            override fun onEndOfSpeech() = Unit
+
+            override fun onError(error: Int) {
+                sendSpeechResult(speechRequestId, "", true, "speech-error-$error")
+                stopSpeechRecognition()
+            }
+
+            override fun onResults(results: Bundle?) {
+                val text = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    .orEmpty()
+                sendSpeechResult(speechRequestId, text, true)
+                stopSpeechRecognition()
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val text = partialResults
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    .orEmpty()
+                if (text.isNotBlank()) {
+                    sendSpeechResult(speechRequestId, text, false)
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) = Unit
+        })
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.SIMPLIFIED_CHINESE.toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        recognizer.startListening(intent)
+    }
+
+    private fun stopSpeechRecognition() {
+        speechRecognizer?.apply {
+            try {
+                stopListening()
+            } catch (_: RuntimeException) {
+                // Recognition service may already be stopped.
+            }
+            destroy()
+        }
+        speechRecognizer = null
+    }
+
+    private fun sendSpeechResult(requestId: String, text: String, isFinal: Boolean, error: String? = null) {
+        val payload = JSONObject()
+            .put("requestId", requestId)
+            .put("text", text)
+            .put("final", isFinal)
+        if (error != null) {
+            payload.put("error", error)
+        }
+        val script =
+            "window.__TAOHUAYUAN_NATIVE_SPEECH_RESULT__ && window.__TAOHUAYUAN_NATIVE_SPEECH_RESULT__(${payload});"
+        webView.evaluateJavascript(script, null)
+    }
+
     inner class RokidNativeBridge {
         @JavascriptInterface
         fun postStatus(message: String) {
             runOnUiThread { sendStatusToPhone("web:$message") }
+        }
+
+        @JavascriptInterface
+        fun startSpeechRecognition(requestId: String?) {
+            runOnUiThread { this@MainActivity.startSpeechRecognition(requestId.orEmpty()) }
+        }
+
+        @JavascriptInterface
+        fun stopSpeechRecognition() {
+            runOnUiThread { this@MainActivity.stopSpeechRecognition() }
         }
     }
 }

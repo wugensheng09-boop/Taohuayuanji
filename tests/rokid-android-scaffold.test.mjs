@@ -29,6 +29,8 @@ test("glass WebView module targets the formal Taohuayuan package and launch rout
   assert.doesNotMatch(activity, /appendQueryParameter\("autostart", "1"\)/);
   assert.doesNotMatch(activity, /\/learn\/taohuayuanji/);
   assert.match(activity, /RokidNativeBridge/);
+  assert.match(activity, /SpeechRecognizer/);
+  assert.match(activity, /startSpeechRecognition/);
 });
 
 test("mobile controller module is wired for CXR-L CUSTOMAPP control", () => {
@@ -45,4 +47,6 @@ test("mobile controller module is wired for CXR-L CUSTOMAPP control", () => {
   assert.match(controller, /choice:a/);
   assert.match(controller, /choice:b/);
   assert.match(controller, /choice:c/);
+  assert.match(controller, /Game: Skip \/ Unstick/);
+  assert.match(controller, /sendGameCommand\("skip"\)/);
 });

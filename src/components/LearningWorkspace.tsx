@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { SpeechInputButton } from "@/components/SpeechInputButton";
 import type { QuizRubricResult } from "@/lib/ai";
 import { calculatePeerFinalScore, classifyPeerFreeReply, levelFromPeerScore } from "@/lib/peerFisherScoring.mjs";
 import type { RokidRuntimeMode } from "@/lib/rokid-device";
@@ -371,33 +372,18 @@ export function LearningWorkspace({
     [bundle.epilogue.npcs],
   );
 
-  const [sessionId, setSessionId] = useState(() => {
-    if (typeof window === "undefined") return uid("s");
-    const progress = resume ? readStoredProgress(bundle.lesson.lessonId, new Set(bundle.scenes.map((s) => s.sceneId))) : null;
-    const nextSessionId = progress?.sessionId ?? uid("s");
-    window.localStorage.setItem(`tyy:session:${bundle.lesson.lessonId}`, nextSessionId);
-    return nextSessionId;
-  });
+  const [sessionId, setSessionId] = useState(() => uid("s"));
 
   const shouldAutostart = deviceMode === "rokid" && autostart;
   const [introVisible, setIntroVisible] = useState(!shouldAutostart);
   const [introState, setIntroState] = useState<IntroState>(shouldAutostart ? "ready" : "playing");
   const [paused, setPaused] = useState(false);
-  const [sceneId, setSceneId] = useState(() => {
-    const progress = resume ? readStoredProgress(bundle.lesson.lessonId, new Set(bundle.scenes.map((s) => s.sceneId))) : null;
-    return progress?.currentSceneId ?? bundle.lesson.entrySceneId;
-  });
+  const [sceneId, setSceneId] = useState(bundle.lesson.entrySceneId);
   const [lineIdx, setLineIdx] = useState(0);
   const [typed, setTyped] = useState(0);
   const [jump, setJump] = useState<Jump | null>(null);
   const [activeCheckpoint, setActiveCheckpoint] = useState<{ lineId: string; choices: string[] } | null>(null);
-  const [visited, setVisited] = useState<string[]>(() => {
-    const progress = resume ? readStoredProgress(bundle.lesson.lessonId, new Set(bundle.scenes.map((s) => s.sceneId))) : null;
-    const startSceneId = progress?.currentSceneId ?? bundle.lesson.entrySceneId;
-    return [...new Set([bundle.lesson.entrySceneId, ...(progress?.visitedScenes ?? []), startSceneId])].filter((item) =>
-      bundle.scenes.some((sceneItem) => sceneItem.sceneId === item),
-    );
-  });
+  const [visited, setVisited] = useState<string[]>([bundle.lesson.entrySceneId]);
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [npcSpeechQueue, setNpcSpeechQueue] = useState<NpcSpeechTask[]>([]);
@@ -448,6 +434,7 @@ export function LearningWorkspace({
     ambientPrimary: DEFAULT_AMBIENT_PRIMARY,
     ambientSecondary: DEFAULT_AMBIENT_SECONDARY,
   });
+  const resumeAppliedRef = useRef(false);
 
   const scene = sceneMap[sceneId] ?? bundle.scenes[0];
   const line = scene.timeline[lineIdx] ?? null;
@@ -1316,6 +1303,43 @@ export function LearningWorkspace({
   };
 
   useEffect(() => {
+    if (resumeAppliedRef.current) return;
+    resumeAppliedRef.current = true;
+
+    const progress = resume ? readStoredProgress(lessonId, validSceneIds) : null;
+    const nextSessionId = progress?.sessionId ?? uid("s");
+    window.localStorage.setItem(`tyy:session:${lessonId}`, nextSessionId);
+
+    window.setTimeout(() => {
+      setSessionId(nextSessionId);
+
+      if (!progress) return;
+
+      setSceneId(progress.currentSceneId);
+      setLineIdx(0);
+      setTyped(0);
+      setJump(null);
+      setActiveCheckpoint(null);
+      setVideoEndedByScene({});
+      setVoiceGateStatus("idle");
+      setLineGateKey("");
+      setLineGateReadyAt(0);
+      setLineFallbackReadyAt(0);
+      setPaused(false);
+      setDone(false);
+      setSummary(null);
+      setSummaryLoading(false);
+      openedInteractionsRef.current.clear();
+      clearNpcState();
+      setVisited(
+        [...new Set([bundle.lesson.entrySceneId, ...progress.visitedScenes, progress.currentSceneId])].filter((item) =>
+          validSceneIds.has(item),
+        ),
+      );
+    }, 0);
+  }, [bundle.lesson.entrySceneId, clearNpcState, lessonId, resume, validSceneIds]);
+
+  useEffect(() => {
     const visitedScenes = [...new Set(visited.filter((item) => validSceneIds.has(item)))];
     window.localStorage.setItem(`tyy:session:${lessonId}`, sessionId);
     window.localStorage.setItem(
@@ -1978,6 +2002,114 @@ export function LearningWorkspace({
     submitRoleplay,
   ]);
 
+  const submitSafeDefaultResponse = useCallback(() => {
+    if (npcBusy) return false;
+
+    if (isRoleplayPhase) {
+      const message = guideReplies[0] ?? "我只是误入此地，不便多说。";
+      void submitRoleplay(message);
+      return true;
+    }
+
+    if (isPeerRound1) {
+      const option = peerFlow.round1.options[0];
+      if (!option) return false;
+      submitPeerRound1Message(option.text);
+      return true;
+    }
+
+    if (isPeerOpenRound) {
+      const message = guideReplies[0] ?? "所见恍若梦境，难以尽述。";
+      void submitPeerOpenRound(message);
+      return true;
+    }
+
+    if (isPeerRound4) {
+      const option = peerFlow.round4.options[0];
+      if (!option) return false;
+      submitPeerRound4Message(option.text);
+      return true;
+    }
+
+    return false;
+  }, [
+    guideReplies,
+    isPeerOpenRound,
+    isPeerRound1,
+    isPeerRound4,
+    isRoleplayPhase,
+    npcBusy,
+    peerFlow.round1.options,
+    peerFlow.round4.options,
+    submitPeerOpenRound,
+    submitPeerRound1Message,
+    submitPeerRound4Message,
+    submitRoleplay,
+  ]);
+
+  const skipCurrentBlock = useCallback(() => {
+    if (introVisible) {
+      skipIntro();
+      return true;
+    }
+
+    if (continueChoiceOrJump()) return true;
+
+    if (sceneOneShotWaiting) {
+      markSceneVideoEnded(sceneVideoStateKey);
+      return true;
+    }
+
+    if (interactionActive) {
+      if (isPeerAwaitingNextPrompt) {
+        continuePeerQuestion();
+        return true;
+      }
+      if (isFollowUpDecision || isPeerDone) {
+        closeNpcAndContinue();
+        return true;
+      }
+      if (showManualInput && submitSafeDefaultResponse()) return true;
+      stopVoice();
+      skipInteractionBySpace();
+      return true;
+    }
+
+    if (line) {
+      stopVoice();
+      setVoiceGateStatus("missing");
+      const now = Date.now();
+      setLineGateKey(`${sceneId}:${line.id}`);
+      setLineGateReadyAt(now);
+      setLineFallbackReadyAt(now);
+      setTyped(line.text.length);
+      advance();
+      return true;
+    }
+
+    return false;
+  }, [
+    advance,
+    closeNpcAndContinue,
+    continueChoiceOrJump,
+    continuePeerQuestion,
+    interactionActive,
+    introVisible,
+    isFollowUpDecision,
+    isPeerAwaitingNextPrompt,
+    isPeerDone,
+    line,
+    markSceneVideoEnded,
+    sceneId,
+    sceneOneShotWaiting,
+    sceneVideoStateKey,
+    showManualInput,
+    skipInteractionBySpace,
+    skipIntro,
+    stopVoice,
+    submitSafeDefaultResponse,
+  ]);
+
   const submitRokidChoice = useCallback((index: number) => {
     if (index < 0) return false;
     if (activeCheckpoint) {
@@ -2076,10 +2208,17 @@ export function LearningWorkspace({
             advanceIntroFromController();
             break;
           }
+          if (interactionActive && skipCurrentBlock()) {
+            break;
+          }
           if (continueChoiceOrJump()) {
             break;
           }
           window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " " }));
+          break;
+        case "skip":
+        case "fallback":
+          skipCurrentBlock();
           break;
         case "home":
           goHome();
@@ -2115,6 +2254,7 @@ export function LearningWorkspace({
     goHome,
     guideReplies,
     introVisible,
+    interactionActive,
     isPeerDone,
     isPeerOpenRound,
     isPeerRound1,
@@ -2127,6 +2267,7 @@ export function LearningWorkspace({
     peerFlow.round4.options,
     resetAll,
     showManualInput,
+    skipCurrentBlock,
     submitCheckpointChoice,
     submitPeerRound1Message,
     submitPeerRound4Message,
@@ -2204,6 +2345,17 @@ export function LearningWorkspace({
             >
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent group-hover:opacity-0 transition-opacity" />
               {introVisible ? "加载中" : paused ? "▶ 继 续" : "॥ 暂 停"}
+            </button>
+            <button
+              type="button"
+              data-testid="story-skip"
+              disabled={introVisible || done}
+              onClick={() => {
+                skipCurrentBlock();
+              }}
+              className="relative overflow-hidden rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white/90 backdrop-blur-md transition-all hover:border-[#d6a86c]/35 hover:bg-[#d6a86c]/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-55 shadow-[0_0_15px_rgba(0,0,0,0.5)]"
+            >
+              跳过
             </button>
             <button
               type="button"
@@ -2457,6 +2609,14 @@ export function LearningWorkspace({
                               Enter 提交 · Shift+Enter 换行
                             </div>
                           </div>
+                          <SpeechInputButton
+                            value={npcInput}
+                            onChange={setNpcInput}
+                            disabled={disableNpcInput}
+                            maxLength={160}
+                            data-testid="npc-speech"
+                            className="h-12 shrink-0 border-[#d6a86c]/28 bg-black/26 px-4 text-xs font-semibold tracking-[0.08em] text-[#ead8bf] hover:border-[#d6a86c]/68 hover:bg-[#d6a86c]/10 sm:h-24"
+                          />
                           <button
                             type="button"
                             onClick={submitCurrentResponse}
@@ -2533,6 +2693,18 @@ export function LearningWorkspace({
                     ) : null}
 
                     <div className="mt-4 flex flex-wrap justify-end gap-3 w-full">
+                      {!isPeerDone ? (
+                        <button
+                          type="button"
+                          data-testid="npc-skip"
+                          onClick={() => {
+                            skipCurrentBlock();
+                          }}
+                          className="rounded-full border border-white/10 bg-black/28 px-5 py-2 text-sm text-[#d6c5af] transition-all hover:border-[#d6a86c]/45 hover:bg-[#d6a86c]/10 hover:text-white active:scale-95"
+                        >
+                          卡住/跳过
+                        </button>
+                      ) : null}
                       {isFollowUpDecision ? (
                         <button
                           type="button"
