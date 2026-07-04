@@ -155,6 +155,7 @@ async function generateOpenAiCompatibleChat(config, payload) {
       model: config.chat.model || payload.model,
       temperature: 0.5,
       max_tokens: 800,
+      enable_thinking: false,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: ensureJsonInstruction(payload.systemPrompt) },
@@ -184,6 +185,7 @@ async function generateBailianChat(config, payload) {
       model: config.chat.model || payload.model,
       temperature: 0.5,
       max_tokens: 800,
+      enable_thinking: false,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: ensureJsonInstruction(payload.systemPrompt) },
