@@ -591,14 +591,15 @@ export function InterrogationWorkspace({
                       disabled={busy || done}
                       maxLength={360}
                       data-testid="guard-speech"
-                      className="min-h-10 border-[#d8b176]/28 bg-black/28 px-3 text-sm text-[#ead5b0] hover:border-[#d8b176]/60 hover:bg-[#d8b176]/10"
+                      variant="icon"
+                      className="npc-mic-button"
                     />
                     <button
                       type="button"
                       data-testid="guard-skip"
                       onClick={skipCurrentTurn}
                       disabled={done}
-                      className="inline-flex min-h-10 items-center rounded-lg border border-[#d8b176]/20 bg-black/22 px-3 text-sm text-[#cdbb9d] transition hover:border-[#d8b176]/52 hover:bg-[#d8b176]/10 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="npc-skip-link disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       跳过当前盘问
                     </button>

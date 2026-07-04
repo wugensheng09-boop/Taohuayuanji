@@ -16,7 +16,7 @@ services:
       - key: HOST
         value: 0.0.0.0
       - key: REQUEST_TIMEOUT_MS
-        value: 20000
+        value: 60000
       - key: REQUEST_BODY_LIMIT_BYTES
         value: 262144
       - key: RATE_LIMIT_WINDOW_MS

@@ -62,6 +62,7 @@ type SpeechInputButtonProps = {
   disabled?: boolean;
   maxLength?: number;
   className?: string;
+  variant?: "label" | "icon";
   idleLabel?: string;
   listeningLabel?: string;
   unavailableLabel?: string;
@@ -86,6 +87,7 @@ export function SpeechInputButton({
   disabled = false,
   maxLength,
   className = "",
+  variant = "label",
   idleLabel = "语音输入",
   listeningLabel = "正在听",
   unavailableLabel = "语音不可用",
@@ -210,6 +212,8 @@ export function SpeechInputButton({
   };
 
   const label = !supported || status === "unsupported" ? unavailableLabel : listening ? listeningLabel : idleLabel;
+  const iconOnly = variant === "icon";
+  const iconSize = iconOnly ? 22 : 16;
 
   return (
     <button
@@ -218,11 +222,12 @@ export function SpeechInputButton({
       onClick={startListening}
       disabled={disabled || !supported}
       aria-pressed={listening}
+      aria-label={label}
       title={status === "error" ? "语音识别失败，请重试或改用文字/跳过" : label}
       className={`inline-flex items-center justify-center gap-2 rounded-lg border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
     >
-      {listening ? <MicOff size={16} /> : <Mic size={16} />}
-      <span>{label}</span>
+      {listening ? <MicOff size={iconSize} /> : <Mic size={iconSize} />}
+      <span className={iconOnly ? "sr-only" : ""}>{label}</span>
     </button>
   );
 }

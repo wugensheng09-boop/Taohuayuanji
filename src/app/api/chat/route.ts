@@ -48,7 +48,7 @@ function toRuntimeInterrogationNpc(character: InterrogationCharacterConfig): Npc
 
 async function generateInterrogationWithTimeout(
   params: Parameters<typeof generateNpcReply>[0],
-  timeoutMs = 4200,
+  timeoutMs = 30000,
 ): Promise<ChatGenerationResult | null> {
   const aiPromise = generateNpcReply(params).catch(() => null);
   const timeoutPromise = new Promise<null>((resolve) => {

@@ -380,7 +380,7 @@ async function requestUpstreamChat(params: {
         payload: params.source.payload,
       },
     },
-    timeoutMs: 20000,
+    timeoutMs: 60000,
   });
 }
 

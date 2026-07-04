@@ -76,7 +76,7 @@ export async function synthesizeNpcTts(npcId: string, text: string): Promise<Tts
         text: trimmed,
         voiceProfile,
       },
-      timeoutMs: 18000,
+      timeoutMs: 30000,
     });
 
     if (!payload.audioBase64 || !payload.mimeType) {

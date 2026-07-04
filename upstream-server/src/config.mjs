@@ -24,7 +24,7 @@ export function createConfig() {
   return {
     host: process.env.HOST?.trim() || "0.0.0.0",
     port: toInt(process.env.PORT, 8787),
-    requestTimeoutMs: toInt(process.env.REQUEST_TIMEOUT_MS, 20000),
+    requestTimeoutMs: Math.max(toInt(process.env.REQUEST_TIMEOUT_MS, 60000), 60000),
     requestBodyLimitBytes: toInt(process.env.REQUEST_BODY_LIMIT_BYTES, 262144),
     rateLimitWindowMs: toInt(process.env.RATE_LIMIT_WINDOW_MS, 60000),
     rateLimitMaxRequests: toInt(process.env.RATE_LIMIT_MAX_REQUESTS, 60),

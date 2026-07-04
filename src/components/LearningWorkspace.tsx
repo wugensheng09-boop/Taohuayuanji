@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SpeechInputButton } from "@/components/SpeechInputButton";
@@ -48,6 +49,9 @@ type SpeechPacket =
 type ChatRes = {
   reply?: string;
   error?: string;
+  source?: "model" | "mock" | "local_fallback";
+  fallbackReason?: string;
+  roleSafetyFlags?: string[];
   knowledgeTags?: string[];
   leakRiskLevel?: LeakRisk;
   leakRiskScore?: number;
@@ -101,7 +105,7 @@ const NPC_SPEECH_FALLBACK_MS = 2200;
 const NPC_SPEECH_MAX_BLOCK_MS = 35000;
 const ONE_SHOT_VIDEO_METADATA_TIMEOUT_MS = 30000;
 const ONE_SHOT_VIDEO_MAX_TIMEOUT_MS = 120000;
-const CHAT_REQUEST_TIMEOUT_MS = 20000;
+const CHAT_REQUEST_TIMEOUT_MS = 90000;
 const TYPE_CHAR_BASE_MS = 62;
 const TYPE_PUNCT_DELAY_MS = 200;
 const NARRATION_MIN_MS = 2800;
@@ -1018,29 +1022,24 @@ export function LearningWorkspace({
     setManualInputOpen(false);
 
     try {
-      const fixedReply = presetMessage ? getFixedNpcReply(activeNpc.npcId, activePhase, message) : null;
-      if (fixedReply) {
-        addTurn(activeNpc.name, fixedReply, "npc", activeNpc.portraitImage, getNpcSide(activeNpc));
-      } else {
-        const data = await callChat({
-          sessionId,
-          lessonId,
-          sceneId,
-          npcId: activeNpc.npcId,
-          mode: "roleplay_chat",
-          message,
-          lineId: line?.id,
-        });
+      const data = await callChat({
+        sessionId,
+        lessonId,
+        sceneId,
+        npcId: activeNpc.npcId,
+        mode: "roleplay_chat",
+        message,
+        lineId: line?.id,
+      });
 
-        addTurn(
-          activeNpc.name,
-          data.reply ?? "我听见了。",
-          "npc",
-          activeNpc.portraitImage,
-          getNpcSide(activeNpc),
-          data.tts ? { kind: "tts", tts: data.tts } : undefined,
-        );
-      }
+      addTurn(
+        activeNpc.name,
+        data.reply ?? "我听见了。",
+        "npc",
+        activeNpc.portraitImage,
+        getNpcSide(activeNpc),
+        data.tts ? { kind: "tts", tts: data.tts } : undefined,
+      );
       if (!canContinue) {
         if (activePhase === "aqiao") {
           addTurn("旁白", "阿樵神色稍缓，似乎愿意再听你多说几句。", "narration");
@@ -1049,8 +1048,16 @@ export function LearningWorkspace({
         }
       }
       setCanContinue(true);
-    } catch {
-      addTurn(activeNpc.name, "我一时没听清，你再慢慢说一遍。", "npc", activeNpc.portraitImage, getNpcSide(activeNpc));
+    } catch (error) {
+      console.error("[npc-dialogue] roleplay chat failed", error);
+      const fixedReply = presetMessage ? getFixedNpcReply(activeNpc.npcId, activePhase, message) : null;
+      addTurn(
+        activeNpc.name,
+        fixedReply ?? "我一时没听清，你再慢慢说一遍。",
+        "npc",
+        activeNpc.portraitImage,
+        getNpcSide(activeNpc),
+      );
     } finally {
       setPendingUserMessage("");
       setSelectedPresetReply(null);
@@ -1125,37 +1132,34 @@ export function LearningWorkspace({
     const leakEvalPromise = evaluateLeakSilently(message);
 
     try {
-      const fixedReply = presetMessage ? getFixedNpcReply(npc.npcId, activePhase, message) : null;
-      if (fixedReply) {
-        addTurn(npc.name, fixedReply, "npc", npc.portraitImage, getNpcSide(npc));
-      } else {
-        const roleplay = await callChat({
-          sessionId,
-          lessonId,
-          sceneId,
-          npcId: npc.npcId,
-          mode: "roleplay_chat",
-          message,
-          question: latestNpcPrompt,
-          lineId: line?.id,
-        });
+      const roleplay = await callChat({
+        sessionId,
+        lessonId,
+        sceneId,
+        npcId: npc.npcId,
+        mode: "roleplay_chat",
+        message,
+        question: latestNpcPrompt,
+        lineId: line?.id,
+      });
 
-        const shortReply = normalizeShortReply(
-          roleplay.reply ?? "我记下了。",
-          peerFlow.replyConstraints.maxChars,
-          peerFlow.replyConstraints.forbidQuestions,
-        );
-        addTurn(
-          npc.name, 
-          shortReply, 
-          "npc", 
-          npc.portraitImage, 
-          getNpcSide(npc),
-          roleplay.tts ? { kind: "tts", tts: roleplay.tts } : undefined,
-        );
-      }
-    } catch {
-      addTurn(npc.name, "我记下了。", "npc", npc.portraitImage, getNpcSide(npc));
+      const shortReply = normalizeShortReply(
+        roleplay.reply ?? "我记下了。",
+        peerFlow.replyConstraints.maxChars,
+        peerFlow.replyConstraints.forbidQuestions,
+      );
+      addTurn(
+        npc.name,
+        shortReply,
+        "npc",
+        npc.portraitImage,
+        getNpcSide(npc),
+        roleplay.tts ? { kind: "tts", tts: roleplay.tts } : undefined,
+      );
+    } catch (error) {
+      console.error("[npc-dialogue] peer chat failed", error);
+      const fixedReply = presetMessage ? getFixedNpcReply(npc.npcId, activePhase, message) : null;
+      addTurn(npc.name, fixedReply ?? "我记下了。", "npc", npc.portraitImage, getNpcSide(npc));
     }
 
     setPeerNextPrompt(
@@ -2540,8 +2544,8 @@ export function LearningWorkspace({
 
               <div className="flex flex-col gap-4">
                 {/* NPC Speech Box */}
-                <section className="relative px-5 py-4 w-full">
-                  <div className="absolute left-0 top-0 bottom-0 w-[4px] rounded-full bg-gradient-to-b from-[#d6a86c] to-transparent opacity-80" />
+                <section className="npc-dialogue-copy relative w-full px-4 py-3 md:px-7 md:py-5">
+                  <div className="npc-dialogue-rule" />
                   <div className="mb-2 flex items-center gap-3 md:hidden">
                     {!isPeerFisherInteraction ? (
                       <span className={`mobile-portrait ${portraitTone}`}>
@@ -2554,18 +2558,18 @@ export function LearningWorkspace({
                     {activeSpeakerName}
                     {activeSpeakerRole ? <span className="text-[10px] text-[#cca070]/70 font-normal">· {activeSpeakerRole}</span> : null}
                   </p>
-                  <p className="text-base leading-relaxed tracking-wide text-[#f2e6d5] md:text-xl drop-shadow-sm font-medium">
+                  <p className="npc-dialogue-text text-base leading-relaxed md:text-xl">
                     {latestNpcText}
                   </p>
                 </section>
 
-                <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                <div className="npc-dialogue-divider" />
 
                 {/* User Response Area */}
-                <section className="relative min-h-[140px] flex flex-col justify-end">
-                  <div className="mb-3 flex items-center justify-between px-2">
-                    <p className="text-xs tracking-[0.2em] text-[#ab9475] font-medium flex items-center gap-2">
-                      <span className="h-4 w-[2px] bg-[#ac8551] rounded-full inline-block" /> 
+                <section className="npc-response-section relative flex min-h-[132px] flex-col justify-end">
+                  <div className="npc-response-label-row mb-2 flex items-center justify-between px-2">
+                    <p className="npc-response-label flex items-center gap-2 text-xs font-medium">
+                      <span className="npc-response-label-mark inline-block" /> 
                       你的回应
                     </p>
                     {isFollowUpDecision && showManualInput ? (
@@ -2588,11 +2592,11 @@ export function LearningWorkspace({
                     </div>
                   ) : null}
 
-                  <div className="w-full flex-1 flex flex-col justify-end gap-3">
+                  <div className="npc-response-stack flex w-full flex-1 flex-col justify-end gap-3">
                     {showManualInput ? (
                       <div className="flex w-full flex-col gap-3 animate-in slide-in-from-bottom-2 duration-300">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                          <div className="relative flex-1 w-full group">
+                        <div className="npc-input-row">
+                          <div className="npc-answer-field group">
                             <textarea
                               value={npcInput}
                               onChange={(event) => setNpcInput(event.target.value)}
@@ -2603,9 +2607,9 @@ export function LearningWorkspace({
                                 event.preventDefault();
                                 submitCurrentResponse();
                               }}
-                              className="h-24 w-full resize-none rounded-lg border border-[#d6a86c]/18 bg-[#080604]/72 px-5 py-4 text-base leading-7 text-[#fcf1df] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] outline-none backdrop-blur-md transition-all placeholder:text-[#d3b994]/35 focus:border-[#d6a86c]/64 focus:bg-[#130d08]/82 focus:ring-1 focus:ring-[#d6a86c]/45 disabled:opacity-50"
+                              className="npc-answer-textarea"
                             />
-                            <div className="pointer-events-none absolute bottom-3 right-3 text-[10px] text-[#d6c5af]/35 opacity-0 transition-opacity group-focus-within:opacity-100">
+                            <div className="npc-answer-hint">
                               Enter 提交 · Shift+Enter 换行
                             </div>
                           </div>
@@ -2615,21 +2619,21 @@ export function LearningWorkspace({
                             disabled={disableNpcInput}
                             maxLength={160}
                             data-testid="npc-speech"
-                            className="h-12 shrink-0 border-[#d6a86c]/28 bg-black/26 px-4 text-xs font-semibold tracking-[0.08em] text-[#ead8bf] hover:border-[#d6a86c]/68 hover:bg-[#d6a86c]/10 sm:h-24"
+                            variant="icon"
+                            className="npc-mic-button"
                           />
                           <button
                             type="button"
                             onClick={submitCurrentResponse}
                             disabled={npcBusy || !npcInput.trim()}
-                            className="relative h-12 shrink-0 overflow-hidden rounded-lg border border-[#d6a86c]/45 bg-gradient-to-r from-[#7b4f24] via-[#b8813c] to-[#d0a160] px-7 text-sm font-semibold tracking-[0.16em] text-[#fff8ec] shadow-[0_14px_28px_rgba(0,0,0,0.38),0_0_22px_rgba(214,168,108,0.18)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(0,0,0,0.46),0_0_28px_rgba(214,168,108,0.24)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 sm:h-24"
+                            className="npc-submit-button"
                           >
                             <span className="relative z-10">{npcBusy ? "回应中" : submitResponseLabel}</span>
-                            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/18 to-transparent transition-transform duration-700 hover:translate-x-full" />
                           </button>
                         </div>
 
                         {showGuideReplies ? (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="npc-guide-replies">
                             {isPeerRound1
                               ? peerFlow.round1.options.map((option) => {
                                   const card = toPeerChoiceCard("round1", option.id, option.text);
@@ -2640,10 +2644,10 @@ export function LearningWorkspace({
                                       type="button"
                                       onClick={() => selectRound1Choice(option.id)}
                                       disabled={npcBusy}
-                                      className={`rounded-lg border px-3 py-2 text-left text-xs leading-5 transition-all active:scale-[0.98] ${
+                                      className={`npc-choice-button ${
                                         selected
-                                          ? "border-[#dcb57e]/80 bg-[#4d3419]/72 text-[#fff2dd]"
-                                          : "border-white/10 bg-black/20 text-[#d8c3a4] hover:border-[#d6a86c]/40 hover:bg-[#d6a86c]/10 hover:text-[#fff4df]"
+                                          ? "npc-choice-button--selected"
+                                          : ""
                                       }`}
                                     >
                                       <span className="font-semibold">{card.title}</span>
@@ -2661,10 +2665,10 @@ export function LearningWorkspace({
                                         type="button"
                                         onClick={() => selectRound4Choice(option.id)}
                                         disabled={npcBusy}
-                                        className={`rounded-lg border px-3 py-2 text-left text-xs leading-5 transition-all active:scale-[0.98] ${
+                                        className={`npc-choice-button ${
                                           selected
-                                            ? "border-[#dcb57e]/80 bg-[#4d3419]/72 text-[#fff2dd]"
-                                            : "border-white/10 bg-black/20 text-[#d8c3a4] hover:border-[#d6a86c]/40 hover:bg-[#d6a86c]/10 hover:text-[#fff4df]"
+                                            ? "npc-choice-button--selected"
+                                            : ""
                                         }`}
                                       >
                                         <span className="font-semibold">{card.title}</span>
@@ -2678,10 +2682,10 @@ export function LearningWorkspace({
                                       type="button"
                                       onClick={() => selectPresetReply(option)}
                                       disabled={npcBusy}
-                                      className={`rounded-lg border px-3 py-2 text-left text-xs leading-5 transition-all active:scale-[0.98] ${
+                                      className={`npc-choice-button ${
                                         selectedPresetReply === option
-                                          ? "border-[#dcb57e]/80 bg-[#4d3419]/72 text-[#fff2dd]"
-                                          : "border-white/10 bg-black/20 text-[#d8c3a4] hover:border-[#d6a86c]/40 hover:bg-[#d6a86c]/10 hover:text-[#fff4df]"
+                                          ? "npc-choice-button--selected"
+                                          : ""
                                       }`}
                                     >
                                       {option}
@@ -2692,7 +2696,7 @@ export function LearningWorkspace({
                       </div>
                     ) : null}
 
-                    <div className="mt-4 flex flex-wrap justify-end gap-3 w-full">
+                    <div className="npc-dialogue-actions">
                       {!isPeerDone ? (
                         <button
                           type="button"
@@ -2700,9 +2704,9 @@ export function LearningWorkspace({
                           onClick={() => {
                             skipCurrentBlock();
                           }}
-                          className="rounded-full border border-white/10 bg-black/28 px-5 py-2 text-sm text-[#d6c5af] transition-all hover:border-[#d6a86c]/45 hover:bg-[#d6a86c]/10 hover:text-white active:scale-95"
+                          className="npc-skip-link"
                         >
-                          卡住/跳过
+                          跳过对话
                         </button>
                       ) : null}
                       {isFollowUpDecision ? (
@@ -2712,9 +2716,8 @@ export function LearningWorkspace({
                             setCanContinue(false);
                             setManualInputOpen(true);
                           }}
-                          className="group rounded-full border border-white/10 bg-[#302316]/50 px-6 py-2 text-sm text-[#e6d4ba] transition-all hover:bg-[#403020]/60 hover:text-white hover:border-white/20 flex items-center gap-2"
+                          className="npc-secondary-link"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-60 group-hover:opacity-100 transition-opacity"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                           继续闲谈
                         </button>
                       ) : null}
@@ -2724,11 +2727,10 @@ export function LearningWorkspace({
                           type="button"
                           onClick={continuePeerQuestion}
                           disabled={npcBusy}
-                          className="relative overflow-hidden rounded-full border border-[#d6a86c]/40 bg-gradient-to-r from-[#44301d]/90 to-[#2c1d10]/90 px-8 py-2.5 text-sm font-medium text-[#fcf3e3] shadow-[0_4px_16px_rgba(0,0,0,0.5)] transition-all hover:border-[#d6a86c]/80 hover:shadow-[0_4px_24px_rgba(214,168,108,0.25)] active:scale-95 disabled:opacity-50 flex items-center gap-2 group"
+                          className="npc-next-button"
                         >
                           继续追问
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right group-hover:translate-x-1 transition-transform"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                          <div className="absolute inset-0 -translate-x-full animate-[shimmer_3s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                          <ChevronRight size={18} />
                         </button>
                       ) : null}
 
@@ -2736,11 +2738,10 @@ export function LearningWorkspace({
                         <button
                           type="button"
                           onClick={closeNpcAndContinue}
-                          className="relative overflow-hidden rounded-full border border-[#d6a86c]/40 bg-gradient-to-r from-[#44301d]/90 to-[#2c1d10]/90 px-8 py-2.5 text-sm font-medium text-[#fcf3e3] shadow-[0_4px_16px_rgba(0,0,0,0.5)] transition-all hover:border-[#d6a86c]/80 hover:shadow-[0_4px_24px_rgba(214,168,108,0.25)] active:scale-95 flex items-center gap-2 group"
+                          className="npc-next-button"
                         >
                           继续前行
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right group-hover:translate-x-1 transition-transform"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                          <div className="absolute inset-0 -translate-x-full animate-[shimmer_3s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                          <ChevronRight size={18} />
                         </button>
                       ) : null}
                     </div>
